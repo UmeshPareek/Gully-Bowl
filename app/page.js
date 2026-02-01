@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
-import { Camera, Download, Users, LayoutDashboard, Utensils, Send, LogOut, CheckCircle, Link as LinkIcon, Info } from 'lucide-react';
+import { Camera, Download, Users, LayoutDashboard, Utensils, Send, LogOut, CheckCircle, Link as LinkIcon } from 'lucide-react';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC_7TR7XJwZDtOf2NytiJzaKlqnDApZDDY",
@@ -19,7 +19,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// Add any partner emails to this list to grant admin access
+// Add partner emails here for massive access
 const INITIAL_ADMINS = ["pareeku01@gmail.com"]; 
 
 export default function GullyBowlApp() {
@@ -32,6 +32,9 @@ export default function GullyBowlApp() {
   const [vegData, setVegData] = useState({ name: "Gully Green", tagline: "Gourmet Soul", p: "0", f: "0", c: "0", img: "" });
   const [nvData, setNvData] = useState({ name: "Gully Meat", tagline: "Street Flavors", p: "0", f: "0", c: "0", img: "" });
   const [reviews, setReviews] = useState([]);
+
+  // LOGO PATH: Points to the image in your GitHub repository
+  const BRAND_LOGO = "https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png";
 
   useEffect(() => {
     onAuthStateChanged(auth, (u) => {
@@ -56,6 +59,19 @@ export default function GullyBowlApp() {
     alert(`${type.toUpperCase()} is now Live! 🚀`);
   };
 
+  const exportToCSV = () => {
+    if (reviews.length === 0) return alert("No gossip to export yet!");
+    const headers = ["Date", "Name", "Hustle", "Hood", "Tried", "Review"];
+    const rows = reviews.map(r => [r.date, r.name, r.hustle, r.hood, r.tried, `"${r.text.replace(/"/g, '""')}"`]);
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Gully_Bowl_Verdicts_${new Date().toLocaleDateString()}.csv`;
+    link.click();
+  };
+
   const addAdmin = async () => {
     const email = prompt("Enter new Admin Email:");
     if (email && !adminList.includes(email)) {
@@ -68,8 +84,8 @@ export default function GullyBowlApp() {
   if (!user) return (
     <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-6">
       <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-stone-100">
-        <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" className="w-40 mx-auto mb-8" alt="Gully Bowl" />
-        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl hover:scale-105 transition-all uppercase">Enter the Gully</button>
+        <img src={BRAND_LOGO} className="w-40 mx-auto mb-8" alt="Gully Bowl" />
+        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl hover:scale-105 transition-all">SIGN INTO THE GULLY</button>
       </div>
     </div>
   );
@@ -83,7 +99,7 @@ export default function GullyBowlApp() {
       <div className="aspect-square rounded-[4rem] overflow-hidden border-[12px] border-white shadow-2xl mb-8">
         <img src={data.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c"} className="w-full h-full object-cover" alt={type} />
       </div>
-      <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 tracking-tight leading-none">{data.name}</h2>
+      <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 tracking-tight">{data.name}</h2>
       <p className="text-center italic text-stone-400 mb-10 text-xl font-serif">"{data.tagline}"</p>
       <div className="grid grid-cols-3 gap-4">
         {[{l:'P', v:data.p, d:'Protein'}, {l:'F', v:data.f, d:'Fiber'}, {l:'C', v:data.c, d:'Calories'}].map(i => (
@@ -107,7 +123,7 @@ export default function GullyBowlApp() {
 
       {view === 'user' ? (
         <main className="max-w-md mx-auto pt-16 px-6">
-          <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" className="w-28 mx-auto mb-12" alt="Logo" />
+          <img src={BRAND_LOGO} className="w-28 mx-auto mb-12" alt="Logo" />
           <div className="flex gap-2 mb-12 bg-stone-100 p-1.5 rounded-3xl">
             {['Veg', 'Non-Veg', 'Both'].map(t => (
               <button key={t} onClick={() => setSelectedTab(t)} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all ${selectedTab === t ? 'bg-white text-[#B11E48] shadow-md' : 'text-stone-400'}`}>{t}</button>
@@ -119,24 +135,25 @@ export default function GullyBowlApp() {
           <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-stone-50 mt-12">
             <h3 className="text-3xl font-serif font-black text-center italic text-[#B11E48] mb-8 leading-tight">Drop the Verdict</h3>
             <div className="space-y-4">
-              <input id="u-hustle" placeholder="Your Hustle?" className="w-full p-5 bg-stone-50 rounded-2xl outline-none ring-1 ring-stone-100 focus:ring-2 ring-[#B11E48]/20" />
-              <input id="u-hood" placeholder="Which Hood?" className="w-full p-5 bg-stone-50 rounded-2xl outline-none ring-1 ring-stone-100 focus:ring-2 ring-[#B11E48]/20" />
-              <textarea id="u-text" placeholder="Be raw. Be Gully. How was it?" className="w-full p-5 bg-stone-50 rounded-3xl h-32 outline-none ring-1 ring-stone-100 focus:ring-2 ring-[#B11E48]/20"></textarea>
+              <input id="u-hustle" placeholder="Your Hustle?" className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100" />
+              <input id="u-hood" placeholder="Which Hood?" className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100" />
+              <textarea id="u-text" placeholder="Roast or Toast the flavors..." className="w-full p-5 bg-stone-50 rounded-3xl h-32 outline-none border border-stone-100"></textarea>
               <button onClick={async () => {
-                const hust = document.getElementById('u-hustle').value;
-                const txt = document.getElementById('u-text').value;
-                await addDoc(collection(db, "reviews"), { name: user.displayName, hustle: hust, hood: document.getElementById('u-hood').value, tried: selectedTab, text: txt, date: new Date().toLocaleString() });
-                window.location.href = `https://wa.me/917024185979?text=Gully Verdict! From: ${user.displayName} (${hust}). Review: ${txt}`;
-              }} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">SUBMIT VERDICT <Send size={18}/></button>
+                await addDoc(collection(db, "reviews"), { name: user.displayName, hustle: document.getElementById('u-hustle').value, hood: document.getElementById('u-hood').value, tried: selectedTab, text: document.getElementById('u-text').value, date: new Date().toLocaleString() });
+                window.location.href = `https://wa.me/917024185979?text=Gully Verdict! From: ${user.displayName}. Feedback: ${document.getElementById('u-text').value}`;
+              }} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl flex items-center justify-center gap-3">SUBMIT VERDICT <Send size={18}/></button>
             </div>
           </div>
         </main>
       ) : (
         <main className="max-w-7xl mx-auto pt-16 px-8 grid grid-cols-1 lg:grid-cols-3 gap-12">
           <div className="lg:col-span-2 space-y-12">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-8">
                 <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Operational Control</h2>
-                <button onClick={addAdmin} className="bg-white border px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2"><Users size={14}/> Access List</button>
+                <div className="flex gap-3">
+                    <button onClick={exportToCSV} className="bg-white border px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2"><Download size={14}/> Export CSV</button>
+                    <button onClick={addAdmin} className="bg-white border px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2"><Users size={14}/> Access</button>
+                </div>
             </div>
 
             {['veg', 'nonveg'].map(type => {
@@ -154,11 +171,10 @@ export default function GullyBowlApp() {
                     </div>
                     <div className="flex-1 space-y-4">
                       <div className="relative group">
-                        <LinkIcon className="absolute left-4 top-4 text-stone-300 group-focus-within:text-[#B11E48]" size={16} />
+                        <LinkIcon className="absolute left-4 top-4 text-stone-300" size={16} />
                         <input value={bData.img} onChange={e => setBData({...bData, img: e.target.value})} className="w-full pl-12 p-4 bg-stone-50 rounded-2xl text-xs font-mono" placeholder="Paste .jpg link here" />
                       </div>
                       <input value={bData.name} onChange={e => setBData({...bData, name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl font-bold" placeholder="Bowl Name" />
-                      <input value={bData.tagline} onChange={e => setBData({...bData, tagline: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl text-sm italic" placeholder="Tagline..." />
                       <div className="grid grid-cols-3 gap-3">
                         {['p', 'f', 'c'].map(macro => (
                           <div key={macro} className="bg-stone-50 p-4 rounded-2xl text-center">
@@ -177,13 +193,13 @@ export default function GullyBowlApp() {
           <div className="bg-white p-10 rounded-[4rem] shadow-sm border border-stone-100 flex flex-col h-[850px]">
             <h3 className="text-3xl font-serif font-black italic text-[#B11E48] mb-8 leading-tight">Live Gossip Feed</h3>
             <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-              {reviews.length === 0 ? <p className="text-xs text-stone-300 italic">Silence in the gully...</p> : reviews.map((r, i) => (
+              {reviews.map((r, i) => (
                 <div key={i} className="p-6 bg-stone-50 rounded-[2.5rem] border border-stone-50">
                   <div className="flex justify-between items-start mb-2">
                     <p className="font-black text-xs text-[#B11E48] tracking-tight">{r.name}</p>
                     <span className="text-[8px] font-black bg-white px-3 py-1.5 rounded-full border border-stone-100">{r.tried}</span>
                   </div>
-                  <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest mb-4 leading-tight">{r.hustle} • {r.hood}</p>
+                  <p className="text-[9px] text-stone-400 font-bold uppercase mb-4">{r.hustle} • {r.hood}</p>
                   <p className="text-[13px] text-stone-600 italic leading-relaxed">"{r.text}"</p>
                 </div>
               ))}
