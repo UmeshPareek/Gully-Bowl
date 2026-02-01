@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// --- GULLY BOWL FIREBASE CONFIG ---
 const firebaseConfig = {
   apiKey: "AIzaSyC_7TR7XJwZDtOf2NytiJzaKlqnDApZDDY",
   authDomain: "gully-bowl.firebaseapp.com",
@@ -21,216 +20,199 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const provider = new GoogleAuthProvider();
 
+// LIST OF ADMINS
+const ALLOWED_ADMINS = ["pareeku01@gmail.com", "admin2@gmail.com"]; 
+
 export default function GullyBowlApp() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [view, setView] = useState('user');
-  const [bowlType, setBowlType] = useState('Veg'); 
-  const [bowlData, setBowlData] = useState({ name: "Gully Special", tagline: "Street flavors meet gourmet soul.", p: "22g", f: "10g", c: "410", img: "", isVeg: true });
+  const [selectedTab, setSelectedTab] = useState('Veg'); 
+  
+  // States for Veg & Non-Veg Data
+  const [vegData, setVegData] = useState({ name: "Gully Green", tagline: "", p: "0", f: "0", c: "0", img: "" });
+  const [nvData, setNvData] = useState({ name: "Gully Meat", tagline: "", p: "0", f: "0", c: "0", img: "" });
   const [reviews, setReviews] = useState([]);
-  const [activity, setActivity] = useState([]);
+  const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     onAuthStateChanged(auth, (u) => {
       if (u) {
         setUser(u);
-        if (u.email === "pareeku01@gmail.com") setIsAdmin(true);
+        if (ALLOWED_ADMINS.includes(u.email)) setIsAdmin(true);
       }
     });
-    onSnapshot(doc(db, "settings", "currentBowl"), (d) => d.exists() && setBowlData(d.data()));
+
+    onSnapshot(doc(db, "menu", "veg"), (d) => d.exists() && setVegData(d.data()));
+    onSnapshot(doc(db, "menu", "nonveg"), (d) => d.exists() && setNvData(d.data()));
     onSnapshot(query(collection(db, "reviews"), orderBy("date", "desc")), (s) => setReviews(s.docs.map(d => d.data())));
-    onSnapshot(query(collection(db, "activity"), orderBy("timestamp", "desc")), (s) => setActivity(s.docs.map(d => d.data())));
+    onSnapshot(query(collection(db, "activity"), orderBy("timestamp", "desc")), (s) => setLogs(s.docs.map(d => d.data())));
   }, []);
 
-  const handleUpload = async (e) => {
+  const handleUpload = async (e, type) => {
     const file = e.target.files[0];
-    const storageRef = ref(storage, `bowls/${Date.now()}-${file.name}`);
+    if (!file) return;
+    const storageRef = ref(storage, `menu/${type}-${Date.now()}`);
     await uploadBytes(storageRef, file);
     const url = await getDownloadURL(storageRef);
-    setBowlData({ ...bowlData, img: url });
+    if (type === 'veg') setVegData({...vegData, img: url});
+    else setNvData({...nvData, img: url});
   };
 
-  const saveUpdates = async () => {
-    await setDoc(doc(db, "settings", "currentBowl"), bowlData);
-    await addDoc(collection(db, "activity"), { bowl: bowlData.name, admin: user.email, timestamp: new Date().toLocaleString(), type: "Design Update" });
-    alert("Live changes published to Gully Bowl! 🚀");
+  const saveAdminData = async (type) => {
+    const data = type === 'veg' ? vegData : nvData;
+    await setDoc(doc(db, "menu", type), data);
+    await addDoc(collection(db, "activity"), {
+        admin: user.email,
+        action: `Updated ${type} bowl`,
+        timestamp: new Date().toLocaleString()
+    });
+    alert(`${type.toUpperCase()} updated!`);
   };
 
   const submitReview = async () => {
-    const hustle = document.getElementById('u-hustle').value;
-    const hood = document.getElementById('u-hood').value;
-    const text = document.getElementById('u-text').value;
-
-    if(!hustle || !hood || !text) return alert("Don't be shy! Fill all fields so we know you better.");
-
     const review = {
         name: user.displayName,
-        hustle: hustle,
-        hood: hood,
-        typeTried: bowlType,
-        text: text,
+        hustle: document.getElementById('u-hustle').value,
+        hood: document.getElementById('u-hood').value,
+        tried: selectedTab,
+        text: document.getElementById('u-text').value,
         date: new Date().toLocaleString()
     };
-    
     await addDoc(collection(db, "reviews"), review);
-
-    const waNumber = "917024185979";
-    const waMessage = 
-        `*GULLY BOWL VERDICT* 🥗%0A%0A` +
-        `*From:* ${user.displayName}%0A` +
-        `*Hustle:* ${hustle}%0A` +
-        `*The Hood:* ${hood}%0A%0A` +
-        `*I Crushed:* ${bowlType}%0A` +
-        `*Feedback:* "${text}"%0A%0A` +
-        `_Sent via Gully Bowl Digital Experience_`;
-
-    window.location.href = `https://wa.me/${waNumber}?text=${waMessage}`;
-  };
-
-  const downloadExcel = () => {
-    let csvContent = "data:text/csv;charset=utf-8,Date,Name,Hustle,Hood,Bowl Type,Review\n";
-    reviews.forEach(r => {
-      csvContent += `${r.date},${r.name},${r.hustle},${r.hood},${r.typeTried},"${r.text.replace(/"/g, '""')}"\n`;
-    });
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "Gully_Bowl_Reviews.csv");
-    document.body.appendChild(link);
-    link.click();
+    window.location.href = `https://wa.me/917024185979?text=Gully Verdict from ${user.displayName}! Hustle: ${review.hustle}. Verdict: ${review.text}`;
   };
 
   if (!user) return (
-    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-6 font-sans">
-        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-stone-100">
-            <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" alt="Gully Bowl" className="w-40 mx-auto mb-6" />
-            <p className="text-stone-500 mb-8 font-medium italic">"Street flavors, gourmet soul."</p>
-            <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:scale-105 transition-all shadow-lg">
-                Continue with Google ⚡
-            </button>
+    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-6">
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl text-center max-w-sm w-full border border-stone-100">
+            <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" className="w-32 mx-auto mb-6" alt="Logo" />
+            <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-bold shadow-lg">Enter Gully ⚡</button>
+        </div>
+    </div>
+  );
+
+  const BowlCard = ({data, type}) => (
+    <div className="mb-10 animate-in fade-in duration-500">
+        <div className="flex items-center justify-center gap-2 mb-4">
+            <span className={`w-3 h-3 rounded-full ${type === 'Veg' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            <p className="text-[#B11E48] font-black text-[10px] uppercase tracking-widest">{type}</p>
+        </div>
+        <div className="aspect-square rounded-[3rem] overflow-hidden border-[10px] border-white shadow-2xl mb-6">
+            <img src={data.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c"} className="w-full h-full object-cover" alt={type} />
+        </div>
+        <h2 className="text-3xl font-serif font-bold text-[#B11E48] text-center mb-2">{data.name}</h2>
+        <p className="text-center italic text-stone-500 mb-6 px-4">"{data.tagline}"</p>
+        <div className="grid grid-cols-3 gap-3">
+            {[{l:'P', v:data.p}, {l:'F', v:data.f}, {l:'C', v:data.c}].map(i => (
+                <div key={i.l} className="bg-white p-4 rounded-3xl text-center shadow-sm border border-stone-50">
+                    <span className="block text-[10px] font-black text-[#B11E48]">{i.l}</span>
+                    <span className="text-lg font-bold">{i.v}</span>
+                </div>
+            ))}
         </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] text-[#1A1A1A]">
+    <div className="min-h-screen bg-[#FAF9F6] text-[#1A1A1A] pb-20">
       {isAdmin && (
-        <nav className="fixed top-4 right-4 z-50 flex gap-2 bg-black/5 p-1 rounded-full backdrop-blur-md">
-          <button onClick={() => setView('user')} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${view === 'user' ? 'bg-white text-black shadow-sm' : 'text-stone-500'}`}>Consumer View</button>
-          <button onClick={() => setView('admin')} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${view === 'admin' ? 'bg-[#B11E48] text-white shadow-sm' : 'text-stone-500'}`}>Admin Desk</button>
+        <nav className="fixed top-4 right-4 z-50 flex gap-2 glass p-1 rounded-full bg-white/50 backdrop-blur-md border border-[#B11E48]/20">
+          <button onClick={() => setView('user')} className={`px-4 py-2 rounded-full text-[10px] font-bold ${view === 'user' ? 'bg-[#B11E48] text-white' : ''}`}>User View</button>
+          <button onClick={() => setView('admin')} className={`px-4 py-2 rounded-full text-[10px] font-bold ${view === 'admin' ? 'bg-[#B11E48] text-white' : ''}`}>Admin Desk</button>
         </nav>
       )}
 
       {view === 'user' ? (
-        <main className="max-w-md mx-auto pt-12 px-6 pb-20">
-            <header className="text-center mb-10">
-                <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" alt="Gully Bowl" className="w-32 mx-auto mb-4" />
-                <div className="flex items-center justify-center gap-2 mb-6">
-                    <span className={`w-2.5 h-2.5 rounded-full ${bowlData.isVeg ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                    <p className="text-[#B11E48] font-black text-[9px] uppercase tracking-[0.3em]">{bowlData.isVeg ? 'Pure Veg' : 'Non-Veg'}</p>
-                </div>
-                <div className="aspect-square rounded-[3rem] bg-white shadow-2xl overflow-hidden border-[10px] border-white relative transition-transform hover:scale-[1.02]">
-                    <img src={bowlData.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1000"} className="w-full h-full object-cover" />
-                </div>
-                <h2 className="text-3xl font-serif font-bold mt-8 mb-2 tracking-tight text-[#B11E48]">{bowlData.name}</h2>
-                <p className="text-lg font-serif italic text-stone-500 px-4 leading-snug">"{bowlData.tagline}"</p>
-            </header>
+        <main className="max-w-md mx-auto pt-10 px-6">
+            <img src="https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png" className="w-24 mx-auto mb-8" alt="Logo" />
+            
+            <div className="flex gap-2 mb-10 bg-white p-1.5 rounded-2xl shadow-sm">
+                {['Veg', 'Non-Veg', 'Both'].map(t => (
+                    <button key={t} onClick={() => setSelectedTab(t)} className={`flex-1 py-3 rounded-xl text-[10px] font-bold transition-all ${selectedTab === t ? 'bg-[#B11E48] text-white shadow-md' : 'text-stone-400'}`}>{t}</button>
+                ))}
+            </div>
 
-            <div className="space-y-8">
-                <div className="grid grid-cols-3 gap-3">
-                    {[{l:'Protein', k:'p'}, {l:'Fiber', k:'f'}, {l:'Calories', k:'c'}].map((m) => (
-                        <div key={m.k} className="bg-white p-5 rounded-[2rem] text-center shadow-sm border border-stone-50">
-                            <span className="block text-[9px] font-black text-[#B11E48] uppercase mb-1">{m.l}</span>
-                            <span className="text-xl font-bold">{bowlData[m.k]}</span>
-                        </div>
-                    ))}
-                </div>
+            {(selectedTab === 'Veg' || selectedTab === 'Both') && <BowlCard data={vegData} type="Veg" />}
+            {(selectedTab === 'Non-Veg' || selectedTab === 'Both') && <BowlCard data={nvData} type="Non-Veg" />}
 
-                <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-stone-50 space-y-8">
-                    <div className="text-center">
-                        <h3 className="font-serif text-3xl font-bold italic text-[#B11E48]">The Verdict</h3>
-                    </div>
-                    
-                    <div className="space-y-6">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[9px] font-black uppercase text-stone-400 ml-2 tracking-widest">What's your hustle?</label>
-                                <input id="u-hustle" placeholder="eg. Creative Ninja, Developer" className="w-full p-4 bg-stone-50 rounded-2xl outline-none text-sm font-semibold focus:ring-2 ring-[#B11E48]/10" />
-                            </div>
-                            <div>
-                                <label className="text-[9px] font-black uppercase text-stone-400 ml-2 tracking-widest">Where do you hang your hat?</label>
-                                <input id="u-hood" placeholder="eg. Indiranagar, South Delhi" className="w-full p-4 bg-stone-50 rounded-2xl outline-none text-sm font-semibold focus:ring-2 ring-[#B11E48]/10" />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="text-[9px] font-black uppercase text-stone-400 ml-2 tracking-widest">What did you crush?</label>
-                            <div className="flex gap-2 mt-2">
-                                {['Veg', 'Non-Veg', 'Both'].map(t => (
-                                    <button key={t} onClick={() => setBowlType(t)} className={`flex-1 py-3.5 rounded-2xl text-[10px] font-black uppercase transition-all border-2 ${bowlType === t ? 'bg-[#B11E48] border-[#B11E48] text-white shadow-lg scale-105' : 'bg-stone-50 border-transparent text-stone-400'}`}>{t}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <textarea id="u-text" placeholder="Be raw. Be Gully. Tell us how it was..." className="w-full p-6 bg-stone-50 rounded-[2.5rem] h-40 outline-none text-sm italic resize-none"></textarea>
-                        <button onClick={submitReview} className="w-full bg-[#B11E48] text-white py-5 rounded-3xl font-black text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
-                            Submit My Roast/Toast 🥗
-                        </button>
-                    </div>
-                </div>
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl space-y-6 border border-stone-50">
+                <h3 className="text-2xl font-serif font-bold text-center italic text-[#B11E48]">The Verdict</h3>
+                <input id="u-hustle" placeholder="Your Hustle?" className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-[#B11E48]/30 transition-all" />
+                <input id="u-hood" placeholder="Your Hood?" className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-[#B11E48]/30 transition-all" />
+                <textarea id="u-text" placeholder="Roast or Toast us..." className="w-full p-4 bg-stone-50 rounded-2xl h-32 outline-none border border-stone-100 focus:border-[#B11E48]/30 transition-all"></textarea>
+                <button onClick={submitReview} className="w-full bg-[#B11E48] text-white py-5 rounded-[2rem] font-black shadow-xl active:scale-95 transition-all uppercase tracking-widest text-sm">Send it 🥗</button>
             </div>
         </main>
       ) : (
-        <main className="max-w-6xl mx-auto pt-24 px-8 pb-20">
-            <div className="flex justify-between items-end mb-12">
-                <div>
-                    <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Gully Admin</h2>
-                    <p className="text-stone-400 text-[10px] font-black uppercase tracking-widest mt-2">Operational Control</p>
-                </div>
-                <div className="flex gap-3">
-                    <button onClick={downloadExcel} className="bg-white border-2 border-stone-100 px-6 py-4 rounded-2xl font-black text-[10px] uppercase shadow-sm">Download Reviews</button>
-                    <button onClick={saveUpdates} className="bg-[#B11E48] text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:opacity-90 transition-all">Publish Live</button>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-8">
-                    <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border border-stone-100 grid grid-cols-2 gap-10">
-                        <div className="space-y-6">
-                            <input value={bowlData.name} onChange={e => setBowlData({...bowlData, name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-xl font-bold border-none outline-none ring-1 ring-stone-100" placeholder="Bowl Name" />
-                            <textarea value={bowlData.tagline} onChange={e => setBowlData({...bowlData, tagline: e.target.value})} className="w-full p-4 bg-stone-50 rounded-xl text-sm border-none outline-none ring-1 ring-stone-100" rows="2" placeholder="Tagline" />
-                            <div className="flex items-center justify-between p-4 bg-stone-50 rounded-xl ring-1 ring-stone-100">
-                                <span className="text-[10px] font-black uppercase text-stone-400">Pure Veg?</span>
-                                <input type="checkbox" checked={bowlData.isVeg} onChange={e => setBowlData({...bowlData, isVeg: e.target.checked})} className="w-6 h-6 accent-[#B11E48]" />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <input value={bowlData.p} onChange={e => setBowlData({...bowlData, p: e.target.value})} placeholder="P" className="p-4 bg-stone-50 rounded-xl text-center font-bold outline-none ring-1 ring-stone-100" />
-                                <input value={bowlData.f} onChange={e => setBowlData({...bowlData, f: e.target.value})} placeholder="F" className="p-4 bg-stone-50 rounded-xl text-center font-bold outline-none ring-1 ring-stone-100" />
-                                <input value={bowlData.c} onChange={e => setBowlData({...bowlData, c: e.target.value})} placeholder="C" className="p-4 bg-stone-50 rounded-xl text-center font-bold outline-none ring-1 ring-stone-100" />
-                            </div>
+        /* --- ENHANCED ADMIN --- */
+        <main className="max-w-6xl mx-auto pt-24 px-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+                <h2 className="text-4xl font-serif font-bold text-[#B11E48]">Operational Control</h2>
+                
+                {/* Veg Manager */}
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 flex gap-8">
+                    <div className="w-1/3 aspect-square bg-stone-50 rounded-3xl overflow-hidden relative border">
+                        <img src={vegData.img} className="w-full h-full object-cover" />
+                        <input type="file" onChange={(e) => handleUpload(e, 'veg')} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                    <div className="flex-1 space-y-3">
+                        <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Veg Bowl Editor</p>
+                        <input value={vegData.name} onChange={e => setVegData({...vegData, name: e.target.value})} className="w-full p-3 bg-stone-50 rounded-xl" placeholder="Veg Name" />
+                        <div className="flex gap-2">
+                            <input value={vegData.p} onChange={e => setVegData({...vegData, p: e.target.value})} placeholder="P" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
+                            <input value={vegData.f} onChange={e => setVegData({...vegData, f: e.target.value})} placeholder="F" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
+                            <input value={vegData.c} onChange={e => setVegData({...vegData, c: e.target.value})} placeholder="C" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
                         </div>
-                        <div className="border-2 border-dashed rounded-[3.5rem] border-stone-100 flex flex-col items-center justify-center p-8 bg-stone-50/50 hover:bg-stone-50 cursor-pointer relative transition-all group">
-                            <span className="text-4xl">📸</span>
-                            <p className="text-[9px] font-black uppercase mt-4 text-stone-400 text-center">Update Photo</p>
-                            <input type="file" onChange={handleUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                        </div>
+                        <button onClick={() => saveAdminData('veg')} className="bg-[#B11E48] text-white px-6 py-2 rounded-xl text-[10px] font-bold">SAVE VEG</button>
                     </div>
                 </div>
 
-                <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-stone-100 h-[650px] flex flex-col">
-                    <h3 className="font-serif text-2xl font-bold mb-6 italic text-[#B11E48]">Gully Gossip</h3>
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                        {reviews.length === 0 ? <p className="text-xs text-stone-300 italic">No gossip yet...</p> : reviews.map((r, i) => (
-                            <div key={i} className="p-5 bg-stone-50 rounded-[2rem] border border-stone-100 shadow-sm hover:bg-white transition-all">
-                                <div className="flex justify-between items-start mb-1">
-                                    <p className="font-black text-[11px] text-[#B11E48]">{r.name}</p>
-                                    <span className="text-[7px] font-black bg-white px-2 py-1 rounded-full border border-stone-100 uppercase">{r.typeTried}</span>
-                                </div>
-                                <p className="text-[9px] text-stone-400 font-bold uppercase mb-2 italic">{r.hustle} • {r.hood}</p>
-                                <p className="text-[11px] text-stone-600 leading-relaxed italic">"{r.text}"</p>
+                {/* Non-Veg Manager */}
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 flex gap-8">
+                    <div className="w-1/3 aspect-square bg-stone-50 rounded-3xl overflow-hidden relative border">
+                        <img src={nvData.img} className="w-full h-full object-cover" />
+                        <input type="file" onChange={(e) => handleUpload(e, 'nonveg')} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                    <div className="flex-1 space-y-3">
+                        <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Non-Veg Bowl Editor</p>
+                        <input value={nvData.name} onChange={e => setNvData({...nvData, name: e.target.value})} className="w-full p-3 bg-stone-50 rounded-xl" placeholder="Non-Veg Name" />
+                        <div className="flex gap-2">
+                            <input value={nvData.p} onChange={e => setNvData({...nvData, p: e.target.value})} placeholder="P" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
+                            <input value={nvData.f} onChange={e => setNvData({...nvData, f: e.target.value})} placeholder="F" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
+                            <input value={nvData.c} onChange={e => setNvData({...nvData, c: e.target.value})} placeholder="C" className="w-1/3 p-3 bg-stone-50 rounded-xl text-center" />
+                        </div>
+                        <button onClick={() => saveAdminData('nonveg')} className="bg-[#B11E48] text-white px-6 py-2 rounded-xl text-[10px] font-bold">SAVE NON-VEG</button>
+                    </div>
+                </div>
+
+                {/* Admin Logs */}
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100">
+                    <h3 className="font-bold mb-4">Admin Activity Logs</h3>
+                    <div className="space-y-2">
+                        {logs.map((l, i) => (
+                            <div key={i} className="text-[10px] flex justify-between py-2 border-b border-stone-50">
+                                <span>{l.admin} {l.action}</span>
+                                <span className="text-stone-400">{l.timestamp}</span>
                             </div>
                         ))}
                     </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 h-[800px] flex flex-col">
+                <h3 className="font-serif text-2xl font-bold mb-6 italic text-[#B11E48]">Live Gossip (Reviews)</h3>
+                <div className="flex-1 overflow-y-auto space-y-4">
+                    {reviews.map((r, i) => (
+                        <div key={i} className="p-4 bg-stone-50 rounded-2xl border border-stone-100 shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="font-bold text-[11px] text-[#B11E48]">{r.name}</p>
+                                <span className="text-[8px] font-black bg-white px-2 py-1 rounded-full border border-stone-100">{r.tried}</span>
+                            </div>
+                            <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest mb-2 leading-tight">{r.hustle} • {r.hood}</p>
+                            <p className="text-[11px] text-stone-600 leading-relaxed italic">"{r.text}"</p>
+                        </div>
+                    ))}
                 </div>
             </div>
         </main>
