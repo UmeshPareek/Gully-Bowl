@@ -37,7 +37,7 @@ export default function GullyBowlApp() {
   const [reviews, setReviews] = useState([]);
 
   // Branding: GitHub logo path
-  const BRAND_LOGO = "https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png";
+  const BRAND_LOGO = "https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/blob/main/Gully%20Bowls.png;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
