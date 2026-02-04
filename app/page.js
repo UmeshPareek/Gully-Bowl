@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp } from 'lucide-react';
 
 const firebaseConfig = {
@@ -59,7 +59,7 @@ export default function GullyBowlApp() {
 
   const exportToExcel = () => {
     if (reviews.length === 0) return alert("No verdicts to export!");
-    const headers = ["Date", "Trial Date", "Customer Name", "Mobile", "Hustle", "Hood", "Tried", "Veg Review", "Non-Veg Review"];
+    const headers = ["Date", "Trial Date", "Customer Name", "Mobile", "Job/Profession", "Location", "Tried", "Veg Review", "Non-Veg Review"];
     const rows = reviews.map(r => [
         r.date, 
         r.trialDate || r.date.split(',')[0],
@@ -68,7 +68,7 @@ export default function GullyBowlApp() {
         r.hustle || "", 
         r.hood || "", 
         r.tried || "", 
-        `"${(r.vegText || r.text || "").replace(/"/g, '""')}"`,
+        `"${(r.vegText || "").replace(/"/g, '""')}"`,
         `"${(r.nvText || "").replace(/"/g, '""')}"`
     ]);
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -84,7 +84,6 @@ export default function GullyBowlApp() {
     const phone = document.getElementById('u-phone').value.trim();
     const hustle = document.getElementById('u-hustle').value.trim();
     const hood = document.getElementById('u-hood').value.trim();
-    
     let vegText = document.getElementById('u-veg-text')?.value.trim() || "";
     let nvText = document.getElementById('u-nv-text')?.value.trim() || "";
 
@@ -101,11 +100,11 @@ export default function GullyBowlApp() {
     };
     
     await addDoc(collection(db, "reviews"), reviewData);
-    window.location.href = `https://wa.me/917024185979?text=*NEW GULLY VERDICT*%0A*Trial Date:* ${activeTrialDate}%0A*From:* ${user.displayName}%0A*Tried:* ${selectedTab}%0A*Verdict:* ${vegText} ${nvText}`;
+    window.location.href = `https://wa.me/917024185979?text=*GULLY VERDICT*%0A*Trial Date:* ${activeTrialDate}%0A*From:* ${user.displayName}%0A*Tried:* ${selectedTab}`;
   };
 
   if (!user) return (
-    <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-6 font-sans">
+    <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-6">
       <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-[#B11E48]/10">
         <img src={BRAND_LOGO} className="w-40 mx-auto mb-8" alt="Gully Bowl" />
         <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl">ENTER THE GULLY</button>
@@ -122,7 +121,7 @@ export default function GullyBowlApp() {
       <div className="aspect-square rounded-[4rem] overflow-hidden border-[12px] border-white shadow-2xl mb-8 bg-stone-100">
         <img src={data.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c"} className="w-full h-full object-cover" alt={type} />
       </div>
-      <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 tracking-tight leading-none">{data.name}</h2>
+      <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 tracking-tight">{data.name}</h2>
       <div className="grid grid-cols-3 gap-4">
         {[{l:'P', v:data.p, d:'Protein'}, {l:'F', v:data.f, d:'Fiber'}, {l:'C', v:data.c, d:'Calories'}].map(i => (
           <div key={i.l} className="bg-white p-6 rounded-[2.5rem] text-center shadow-sm border border-[#B11E48]/5">
@@ -135,11 +134,11 @@ export default function GullyBowlApp() {
   );
 
   return (
-    <div className="min-h-screen bg-[#FFFBEB] text-[#1A1A1A] pb-32 font-sans">
+    <div className="min-h-screen bg-[#FFFBEB] text-[#1A1A1A] pb-32">
       {isAdmin && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex gap-4 bg-[#B11E48] text-white p-2 rounded-full shadow-2xl">
-          <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Consumer View</button>
-          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin Desk</button>
+          <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Consumer</button>
+          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin</button>
         </nav>
       )}
 
@@ -156,34 +155,33 @@ export default function GullyBowlApp() {
           {(selectedTab === 'Non-Veg' || selectedTab === 'Both') && <BowlDisplay data={nvData} type="Non-Veg" />}
 
           <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-[#B11E48]/5 mt-12">
-            <h3 className="text-3xl font-serif font-black text-center italic text-[#B11E48] mb-8 leading-tight">Your Feedback</h3>
+            <h3 className="text-3xl font-serif font-black text-center italic text-[#B11E48] mb-8 leading-tight">Drop the Verdict</h3>
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-5 bg-[#FFFBEB]/40 rounded-2xl border border-[#B11E48]/10 opacity-70">
                 <UserIcon size={18} className="text-[#B11E48]" />
                 <span className="text-sm font-bold text-[#B11E48]">{user.displayName}</span>
               </div>
               <input id="u-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-              <input id="u-hustle" placeholder="Your Job/Profession? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+              <input id="u-hustle" placeholder="Your Profession? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
               <input id="u-hood" placeholder="Your Location? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
               
               {(selectedTab === 'Veg' || selectedTab === 'Both') && (
-                <textarea id="u-veg-text" placeholder="How was the Veg Bowl? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>
+                <textarea id="u-veg-text" placeholder="Veg Bowl Review... *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>
               )}
               {(selectedTab === 'Non-Veg' || selectedTab === 'Both') && (
-                <textarea id="u-nv-text" placeholder="How was the Non-Veg Bowl? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>
+                <textarea id="u-nv-text" placeholder="Non-Veg Bowl Review... *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>
               )}
               
-              <button onClick={submitVerdict} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl active:scale-95 transition-all uppercase tracking-widest">Submit Verdict</button>
+              <button onClick={submitVerdict} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl active:scale-95 transition-all">SUBMIT VERDICT</button>
             </div>
           </div>
         </main>
       ) : (
-        /* --- ELITE ADMIN DASHBOARD --- */
         <main className="max-w-7xl mx-auto pt-16 px-8 flex flex-col">
             <div className="w-full flex justify-between items-center mb-12">
                 <div>
-                    <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">The Kitchen Desk</h2>
-                    <p className="text-[#B11E48]/50 text-xs font-bold uppercase tracking-widest mt-2 flex items-center gap-2"><Calendar size={12}/> Trial Date: {activeTrialDate}</p>
+                    <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Operational Control</h2>
+                    <p className="text-[#B11E48]/50 text-xs font-bold uppercase tracking-widest mt-2 flex items-center gap-2"><Calendar size={12}/> Trial: {activeTrialDate}</p>
                 </div>
                 <div className="flex gap-4">
                     <input type="date" onChange={(e) => setActiveTrialDate(new Date(e.target.value).toLocaleDateString('en-GB'))} className="bg-white border-[#B11E48]/20 border px-4 py-2 rounded-xl text-xs font-bold" />
@@ -209,40 +207,51 @@ export default function GullyBowlApp() {
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2 space-y-10">
-                    {['veg', 'nonveg'].map(type => (
+                    {['veg', 'nonveg'].map(type => {
+                        const bData = type === 'veg' ? vegData : nvData;
+                        const setBData = type === 'veg' ? setVegData : setNvData;
+                        return (
                         <div key={type} className="bg-white p-10 rounded-[4rem] shadow-sm border border-[#B11E48]/5">
-                            <div className="flex justify-between items-center mb-6">
+                            <div className="flex justify-between items-center mb-8">
                                 <p className={`text-xs font-black uppercase tracking-widest ${type === 'veg' ? 'text-green-600' : 'text-[#B11E48]'}`}>{type} Editor</p>
-                                <button onClick={() => setDoc(doc(db, "menu", type), type === 'veg' ? vegData : nvData)} className="bg-[#B11E48] text-white px-8 py-2 rounded-xl text-[10px] font-black">Publish Live</button>
+                                <button onClick={() => setDoc(doc(db, "menu", type), bData)} className="bg-[#B11E48] text-white px-8 py-3 rounded-2xl text-[10px] font-black">SAVE LIVE</button>
                             </div>
-                            <div className="flex gap-8">
-                                <div className="w-1/4 aspect-square bg-[#FFFBEB] rounded-[2.5rem] overflow-hidden border relative group">
-                                    <img src={type === 'veg' ? vegData.img : nvData.img} className="w-full h-full object-cover" />
-                                    <input value={type === 'veg' ? vegData.img : nvData.img} onChange={e => type === 'veg' ? setVegData({...vegData, img: e.target.value}) : setNvData({...nvData, img: e.target.value})} className="absolute inset-0 opacity-0 cursor-text" placeholder="URL" />
+                            <div className="flex gap-10">
+                                <div className="w-1/3 aspect-square bg-[#FFFBEB] rounded-[3.5rem] overflow-hidden border border-[#B11E48]/10 shadow-inner group relative">
+                                    <img src={bData.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c"} className="w-full h-full object-cover group-hover:opacity-40 transition-all" />
                                     <Camera size={24} className="absolute inset-0 m-auto text-[#B11E48] opacity-50" />
                                 </div>
                                 <div className="flex-1 space-y-4">
-                                    <input value={type === 'veg' ? vegData.name : nvData.name} onChange={e => type === 'veg' ? setVegData({...vegData, name: e.target.value}) : setNvData({...nvData, name: e.target.value})} className="w-full p-4 bg-[#FFFBEB]/50 rounded-2xl font-bold border-none outline-none" placeholder="Bowl Name" />
-                                    <div className="flex gap-2">
-                                        {['p', 'f', 'c'].map(m => (
-                                            <input key={m} value={type === 'veg' ? vegData[m] : nvData[m]} onChange={e => type === 'veg' ? setVegData({...vegData, [m]: e.target.value}) : setNvData({...nvData, [m]: e.target.value})} className="w-1/3 p-3 bg-[#FFFBEB] rounded-xl text-center font-bold" placeholder={m.toUpperCase()} />
+                                    <div className="relative group">
+                                        <LinkIcon className="absolute left-4 top-4 text-stone-300 group-focus-within:text-[#B11E48]" size={16} />
+                                        <input value={bData.img} onChange={e => setBData({...bData, img: e.target.value})} className="w-full pl-12 p-4 bg-[#FFFBEB]/50 rounded-2xl text-xs font-mono border border-transparent focus:border-[#B11E48]/20 outline-none" placeholder="Paste PostImage Link Here" />
+                                    </div>
+                                    <input value={bData.name} onChange={e => setBData({...bData, name: e.target.value})} className="w-full p-4 bg-[#FFFBEB]/50 rounded-2xl font-bold border border-transparent focus:border-[#B11E48]/20 outline-none" placeholder="Bowl Name" />
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {['p', 'f', 'c'].map(macro => (
+                                          <div key={macro} className="bg-[#FFFBEB] p-4 rounded-2xl text-center shadow-inner">
+                                            <span className="block text-[8px] font-black text-stone-300 uppercase mb-1">{macro}</span>
+                                            <input value={bData[macro]} onChange={e => setBData({...bData, [macro]: e.target.value})} className="w-full bg-transparent text-center font-bold text-xl outline-none" />
+                                          </div>
                                         ))}
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
-
                 <div className="bg-white p-10 rounded-[4rem] shadow-sm border border-[#B11E48]/5 h-[850px] flex flex-col">
                     <h3 className="text-3xl font-serif font-black italic text-[#B11E48] mb-8">Trial Gossip</h3>
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                         {reviews.filter(r => r.trialDate === activeTrialDate).map((r, i) => (
-                            <div key={i} className="p-6 bg-[#FFFBEB]/40 rounded-[2.5rem] border border-[#B11E48]/10">
-                                <p className="font-black text-xs text-[#B11E48]">{r.name} <span className="text-stone-300 font-normal">({r.phone})</span></p>
-                                <p className="text-[10px] font-bold text-stone-400 mt-1 mb-3">{r.hustle} • {r.tried}</p>
-                                {r.vegText && <div className="mb-2 p-3 bg-white rounded-2xl border border-green-50 text-[11px] italic text-green-700">Veg: {r.vegText}</div>}
-                                {r.nvText && <div className="p-3 bg-white rounded-2xl border border-red-50 text-[11px] italic text-red-700">Non-Veg: {r.nvText}</div>}
+                            <div key={i} className="p-6 bg-[#FFFBEB]/30 rounded-[2.5rem] border border-[#B11E48]/10 hover:bg-white transition-all">
+                                <div className="flex justify-between items-start mb-2">
+                                    <p className="font-black text-xs text-[#B11E48]">{r.name}</p>
+                                    <span className="text-[8px] font-black bg-white px-2 py-1 rounded-full border border-[#B11E48]/10">{r.tried}</span>
+                                </div>
+                                <p className="text-[10px] font-bold text-[#B11E48]/60 mb-2">{r.phone} • {r.hustle}</p>
+                                {r.vegText && <p className="text-[12px] text-green-700 italic mb-1 leading-relaxed">Veg: {r.vegText}</p>}
+                                {r.nvText && <p className="text-[12px] text-red-700 italic leading-relaxed">Non-Veg: {r.nvText}</p>}
                             </div>
                         ))}
                     </div>
