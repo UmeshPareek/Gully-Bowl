@@ -30,8 +30,8 @@ export default function GullyBowlApp() {
   const [userMode, setUserMode] = useState(null); 
   const [adminList, setAdminList] = useState(INITIAL_ADMINS);
   
-  const [vegData, setVegData] = useState({ name: "Gully Green", tagline: "Gourmet Soul", img: "", p: "0", f: "0", c: "0" });
-  const [nvData, setNvData] = useState({ name: "Gully Meat", tagline: "Street Flavors", img: "", p: "0", f: "0", c: "0" });
+  const [vegData, setVegData] = useState({ name: "Gully Veg", tagline: "Gourmet Soul", img: "", p: "0", f: "0", c: "0" });
+  const [nvData, setNvData] = useState({ name: "Gully Non-Veg", tagline: "Street Flavors", img: "", p: "0", f: "0", c: "0" });
   const [isOrderActive, setIsOrderActive] = useState(false);
   
   const [cart, setCart] = useState({ veg: 0, nonveg: 0 });
@@ -231,7 +231,7 @@ export default function GullyBowlApp() {
                         <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 italic">Daily Fulfillment ({activeDate})</h4>
                         <div className="space-y-4">
                             <div className="flex justify-between items-center"><p className="text-xs font-bold text-green-600 uppercase">Veg Total</p><p className="text-2xl font-black">{totals.veg}</p></div>
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48] uppercase">Meat Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48] uppercase">Non-Veg Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
                             <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Grand Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
                         </div>
                     </div>
@@ -284,7 +284,7 @@ export default function GullyBowlApp() {
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {(r.vegText || r.text) && <div className="p-5 bg-white rounded-3xl border border-green-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText || r.text}</div>}
-                                            {r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
+                                            {r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Non-Veg: {r.nvText}</div>}
                                         </div>
                                     </div>
                                 ))
