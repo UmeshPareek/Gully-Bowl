@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where, or } from "firebase/firestore";
-import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp, ShieldCheck, History, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat } from 'lucide-react';
+import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
+import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp, ShieldCheck, History, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat, Navigation } from 'lucide-react';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC_7TR7XJwZDtOf2NytiJzaKlqnDApZDDY",
@@ -39,7 +39,6 @@ export default function GullyBowlApp() {
   const [allOrders, setAllOrders] = useState([]);
   const [logs, setLogs] = useState([]);
   const [activeDate, setActiveDate] = useState(new Date().toLocaleDateString('en-GB'));
-  const [adminSearch, setAdminSearch] = useState("");
   const [adminTab, setAdminTab] = useState('orders'); 
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -62,9 +61,8 @@ export default function GullyBowlApp() {
     onSnapshot(doc(db, "menu", "nonveg"), (d) => d.exists() && setNvData(d.data()));
     onSnapshot(doc(db, "settings", "orderControl"), (d) => d.exists() && setIsOrderActive(d.data().active));
     
-    // FIX: Show reviews for activeDate OR reviews that have NO trialDate (Past reviews)
-    const reviewQuery = query(collection(db, "reviews"), orderBy("timestamp", sortOrder));
-    onSnapshot(reviewQuery, (s) => {
+    // Logic to show past reviews (no date) + current date reviews
+    onSnapshot(query(collection(db, "reviews"), orderBy("timestamp", sortOrder)), (s) => {
         const filtered = s.docs.map(d => d.data()).filter(r => !r.trialDate || r.trialDate === activeDate);
         setReviews(filtered);
     });
@@ -75,20 +73,14 @@ export default function GullyBowlApp() {
     return () => unsubscribe();
   }, [activeDate, sortOrder]);
 
-  const handleAdminMgmt = async (email, action) => {
-    if (user.email !== SUPER_ADMIN) return alert("Super Admin restriction.");
-    let newList = action === 'add' ? [...new Set([...adminList, email])] : adminList.filter(e => e !== email);
-    await setDoc(doc(db, "settings", "admins"), { emails: newList });
-  };
-
   const exportData = (type) => {
     const data = type === 'orders' ? allOrders : reviews;
-    const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Location", "Veg", "NV"] : ["Date", "Name", "Mobile", "Hustle", "Veg Review", "NV Review"];
-    const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, d.hood, d.vegQty, d.nvQty] : [d.date, d.name, `'${d.phone}`, d.hustle, `"${d.vegText || d.text || ""}"`, `"${d.nvText || ""}"`]);
+    const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Address Details", "Maps Link", "Veg", "NV"] : ["Date", "Name", "Mobile", "Veg Review", "NV Review"];
+    const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, `"${d.fullAddress}"`, d.mapsLink, d.vegQty, d.nvQty] : [d.date, d.name, `'${d.phone}`, `"${d.vegText || d.text}"`, `"${d.nvText}"`]);
     const csv = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;' }));
-    link.download = `Gully_${type}_Report.csv`;
+    link.download = `Gully_${type}_${activeDate}.csv`;
     link.click();
   };
 
@@ -111,8 +103,8 @@ export default function GullyBowlApp() {
     <div className="min-h-screen bg-[#FFFBEB] text-[#1A1A1A] pb-32 font-sans">
       {isAdmin && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex gap-4 bg-[#B11E48] text-white p-2 rounded-full shadow-2xl">
-          <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Store</button>
-          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin</button>
+          <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Store</button>
+          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin</button>
         </nav>
       )}
 
@@ -121,20 +113,26 @@ export default function GullyBowlApp() {
           <img src={BRAND_LOGO} className="w-28 mx-auto mb-10" alt="Logo" />
           {!userMode ? (
             <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-[#B11E48]/5 text-center space-y-6">
-              <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">Welcome back!</h3>
+              <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">The Gully Path</h3>
               <button onClick={() => setUserMode('order')} className="w-full py-6 bg-[#B11E48] text-white rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-3">ORDER BOWL <ShoppingBag/></button>
               <button onClick={() => setUserMode('review')} className="w-full py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[2rem] font-black flex items-center justify-center gap-3">GIVE VERDICT <MessageSquare/></button>
             </div>
           ) : (
             <div className="space-y-8 animate-in slide-in-from-bottom-4">
-               {[ {id:'veg', data:vegData}, {id:'nonveg', data:nvData} ].map(item => (
+               {[ {id:'veg', data:vegData, color: 'green-600', label: '100% VEG'}, {id:'nonveg', data:nvData, color: '[#B11E48]', label: 'NON-VEG'} ].map(item => (
                  <div key={item.id} className="bg-white rounded-[3.5rem] shadow-xl border border-[#B11E48]/5 overflow-hidden">
-                    <div className="aspect-square bg-stone-100"><img src={item.data.img || "https://images.unsplash.com"} className="w-full h-full object-cover" /></div>
+                    <div className="relative aspect-square bg-stone-100">
+                        <img src={item.data.img || "https://images.unsplash.com"} className="w-full h-full object-cover" />
+                        <div className={`absolute top-6 left-6 px-4 py-1.5 rounded-full bg-white shadow-md flex items-center gap-2 border border-stone-100`}>
+                            <div className={`w-2 h-2 rounded-full bg-${item.color}`}></div>
+                            <span className={`text-[8px] font-black tracking-widest text-${item.color}`}>{item.label}</span>
+                        </div>
+                    </div>
                     <div className="p-8">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex-1">
-                                <h3 className="text-3xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
-                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase">"{item.data.tagline}"</p>
+                                <h3 className="text-4xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
+                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase tracking-tighter">"{item.data.tagline}"</p>
                             </div>
                             {userMode === 'order' && (
                                 <div className="flex items-center gap-3 bg-[#FFFBEB] p-2 rounded-2xl border border-[#B11E48]/10 ml-4">
@@ -162,14 +160,20 @@ export default function GullyBowlApp() {
                   <h3 className="text-3xl font-serif font-black italic text-[#B11E48] text-center">{userMode === 'order' ? 'Checkout' : 'Drop the Verdict'}</h3>
                   {userMode === 'order' ? (
                     <>
-                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter italic">Note: The bowl is on us, but delivery is by you! 🥣</p>
-                        <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-                        <input id="o-hood" placeholder="Delivery Location? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter">The bowl is on us, but delivery is by you! 🥣</p>
+                        <div className="space-y-3">
+                            <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                            <textarea id="o-addr" placeholder="Detailed Address (Flat No, Apartment, Location) *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-24"></textarea>
+                            <input id="o-maps" placeholder="Google Maps Link (Optional)" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                        </div>
                         <button onClick={async () => {
                             const p = document.getElementById('o-phone').value;
-                            const h = document.getElementById('o-hood').value;
-                            if(!p || !h || (cart.veg + cart.nonveg === 0)) return alert("Fill details & add items!");
-                            await addDoc(collection(db, "orders"), { name: user.displayName, phone: p, hood: h, vegQty: cart.veg, nvQty: cart.nonveg, trialDate: activeDate, timestamp: Date.now(), date: new Date().toLocaleString() });
+                            const a = document.getElementById('o-addr').value;
+                            if(!p || !a || (cart.veg + cart.nonveg === 0)) return alert("Add bowls & fill delivery info!");
+                            await addDoc(collection(db, "orders"), { 
+                                name: user.displayName, phone: p, fullAddress: a, mapsLink: document.getElementById('o-maps').value,
+                                vegQty: cart.veg, nvQty: cart.nonveg, trialDate: activeDate, timestamp: Date.now(), date: new Date().toLocaleString() 
+                            });
                             alert("Bowl Reserved! 🚀");
                             setUserMode(null);
                         }} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl uppercase">Confirm Order</button>
@@ -200,7 +204,7 @@ export default function GullyBowlApp() {
             <div className="flex justify-between items-start mb-12">
                 <div>
                     <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">The Kitchen Desk</h2>
-                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5">
+                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5 shadow-sm">
                         <button onClick={() => setAdminTab('orders')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'orders' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Orders</button>
                         <button onClick={() => setAdminTab('reviews')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'reviews' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Reviews</button>
                     </div>
@@ -220,9 +224,9 @@ export default function GullyBowlApp() {
                     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
                         <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 italic">Batch Fulfillment ({activeDate})</h4>
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Veg</p><p className="text-2xl font-black text-green-600">{totals.veg}</p></div>
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Meat</p><p className="text-2xl font-black text-red-600">{totals.nv}</p></div>
-                            <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-green-600">Veg Total</p><p className="text-2xl font-black">{totals.veg}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48]">Meat Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
+                            <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Grand Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
                         </div>
                     </div>
                     {['veg', 'nonveg'].map(type => {
@@ -230,7 +234,7 @@ export default function GullyBowlApp() {
                         const set = type === 'veg' ? setVegData : setNvData;
                         return (
                         <div key={type} className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 italic">{type} Bowl Manager</p>
+                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 flex items-center gap-2"><Tag size={12}/> {type} Menu</p>
                             <div className="space-y-3">
                                 <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono outline-none" placeholder="Image URL" />
                                 <input value={data.name} onChange={e => set({...data, name: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl font-bold text-xs" placeholder="Bowl Name" />
@@ -252,9 +256,18 @@ export default function GullyBowlApp() {
                         <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
                             {adminTab === 'orders' ? (
                                 allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20">No orders for this batch.</p> : allOrders.map((o, i) => (
-                                    <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex justify-between items-center hover:bg-white transition-all">
-                                        <div><p className="font-black text-lg text-[#B11E48] uppercase tracking-tighter leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone} • {o.hood}</p></div>
-                                        <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black">NV: {o.nvQty}</span>}</div>
+                                    <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex flex-col gap-4 hover:bg-white transition-all">
+                                        <div className="flex justify-between items-center">
+                                            <div><p className="font-black text-lg text-[#B11E48] uppercase tracking-tighter leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone}</p></div>
+                                            <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black">NV: {o.nvQty}</span>}</div>
+                                        </div>
+                                        <div className="pt-4 border-t border-stone-100 flex items-start gap-4">
+                                            <MapPin size={18} className="text-[#B11E48] mt-1 shrink-0" />
+                                            <div className="flex-1">
+                                                <p className="text-[11px] font-bold text-stone-600 leading-relaxed uppercase tracking-tight">{o.fullAddress}</p>
+                                                {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[10px] font-black text-[#B11E48] bg-[#B11E48]/5 px-3 py-1.5 rounded-lg border border-[#B11E48]/10 hover:bg-[#B11E48] hover:text-white transition-all"><Navigation size={12}/> OPEN GOOGLE MAPS</a>}
+                                            </div>
+                                        </div>
                                     </div>
                                 ))
                             ) : (
