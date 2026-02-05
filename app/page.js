@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
+import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where, or } from "firebase/firestore";
 import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp, ShieldCheck, History, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat } from 'lucide-react';
 
 const firebaseConfig = {
@@ -41,7 +41,7 @@ export default function GullyBowlApp() {
   const [activeDate, setActiveDate] = useState(new Date().toLocaleDateString('en-GB'));
   const [adminSearch, setAdminSearch] = useState("");
   const [adminTab, setAdminTab] = useState('orders'); 
-  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
+  const [sortOrder, setSortOrder] = useState('desc');
 
   const BRAND_LOGO = "https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png";
 
@@ -62,8 +62,13 @@ export default function GullyBowlApp() {
     onSnapshot(doc(db, "menu", "nonveg"), (d) => d.exists() && setNvData(d.data()));
     onSnapshot(doc(db, "settings", "orderControl"), (d) => d.exists() && setIsOrderActive(d.data().active));
     
-    // Sort logic integrated into database queries
-    onSnapshot(query(collection(db, "reviews"), where("trialDate", "==", activeDate), orderBy("timestamp", sortOrder)), (s) => setReviews(s.docs.map(d => d.data())));
+    // FIX: Show reviews for activeDate OR reviews that have NO trialDate (Past reviews)
+    const reviewQuery = query(collection(db, "reviews"), orderBy("timestamp", sortOrder));
+    onSnapshot(reviewQuery, (s) => {
+        const filtered = s.docs.map(d => d.data()).filter(r => !r.trialDate || r.trialDate === activeDate);
+        setReviews(filtered);
+    });
+
     onSnapshot(query(collection(db, "orders"), where("trialDate", "==", activeDate), orderBy("timestamp", sortOrder)), (s) => setAllOrders(s.docs.map(d => d.data())));
     onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(8)), (s) => setLogs(s.docs.map(d => d.data())));
     
@@ -71,7 +76,7 @@ export default function GullyBowlApp() {
   }, [activeDate, sortOrder]);
 
   const handleAdminMgmt = async (email, action) => {
-    if (user.email !== SUPER_ADMIN) return alert("Only Super Admin can edit access.");
+    if (user.email !== SUPER_ADMIN) return alert("Super Admin restriction.");
     let newList = action === 'add' ? [...new Set([...adminList, email])] : adminList.filter(e => e !== email);
     await setDoc(doc(db, "settings", "admins"), { emails: newList });
   };
@@ -79,11 +84,11 @@ export default function GullyBowlApp() {
   const exportData = (type) => {
     const data = type === 'orders' ? allOrders : reviews;
     const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Location", "Veg", "NV"] : ["Date", "Name", "Mobile", "Hustle", "Veg Review", "NV Review"];
-    const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, d.hood, d.vegQty, d.nvQty] : [d.date, d.name, `'${d.phone}`, d.hustle, `"${d.vegText}"`, `"${d.nvText}"`]);
+    const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, d.hood, d.vegQty, d.nvQty] : [d.date, d.name, `'${d.phone}`, d.hustle, `"${d.vegText || d.text || ""}"`, `"${d.nvText || ""}"`]);
     const csv = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;' }));
-    link.download = `Gully_${type}_${activeDate}.csv`;
+    link.download = `Gully_${type}_Report.csv`;
     link.click();
   };
 
@@ -97,7 +102,7 @@ export default function GullyBowlApp() {
     <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-6">
       <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-[#B11E48]/10">
         <img src={BRAND_LOGO} className="w-40 mx-auto mb-8" alt="Gully Bowl" />
-        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl">LOG INTO THE GULLY</button>
+        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl uppercase">Enter Gully</button>
       </div>
     </div>
   );
@@ -117,8 +122,8 @@ export default function GullyBowlApp() {
           {!userMode ? (
             <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-[#B11E48]/5 text-center space-y-6">
               <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">Welcome back!</h3>
-              <button onClick={() => setUserMode('order')} className="w-full py-6 bg-[#B11E48] text-white rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-3">I WANT TO ORDER <ShoppingBag/></button>
-              <button onClick={() => setUserMode('review')} className="w-full py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[2rem] font-black flex items-center justify-center gap-3">I WANT TO REVIEW <MessageSquare/></button>
+              <button onClick={() => setUserMode('order')} className="w-full py-6 bg-[#B11E48] text-white rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-3">ORDER BOWL <ShoppingBag/></button>
+              <button onClick={() => setUserMode('review')} className="w-full py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[2rem] font-black flex items-center justify-center gap-3">GIVE VERDICT <MessageSquare/></button>
             </div>
           ) : (
             <div className="space-y-8 animate-in slide-in-from-bottom-4">
@@ -128,8 +133,8 @@ export default function GullyBowlApp() {
                     <div className="p-8">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex-1">
-                                <h3 className="text-4xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
-                                <p className="text-xs font-bold text-stone-400 mt-1 italic tracking-tight truncate">"{item.data.tagline}"</p>
+                                <h3 className="text-3xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
+                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase">"{item.data.tagline}"</p>
                             </div>
                             {userMode === 'order' && (
                                 <div className="flex items-center gap-3 bg-[#FFFBEB] p-2 rounded-2xl border border-[#B11E48]/10 ml-4">
@@ -157,7 +162,7 @@ export default function GullyBowlApp() {
                   <h3 className="text-3xl font-serif font-black italic text-[#B11E48] text-center">{userMode === 'order' ? 'Checkout' : 'Drop the Verdict'}</h3>
                   {userMode === 'order' ? (
                     <>
-                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter">Note: The bowl is on us, but delivery is by you! 🥣</p>
+                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter italic">Note: The bowl is on us, but delivery is by you! 🥣</p>
                         <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
                         <input id="o-hood" placeholder="Delivery Location? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
                         <button onClick={async () => {
@@ -195,7 +200,7 @@ export default function GullyBowlApp() {
             <div className="flex justify-between items-start mb-12">
                 <div>
                     <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">The Kitchen Desk</h2>
-                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5 shadow-sm">
+                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5">
                         <button onClick={() => setAdminTab('orders')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'orders' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Orders</button>
                         <button onClick={() => setAdminTab('reviews')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'reviews' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Reviews</button>
                     </div>
@@ -204,7 +209,7 @@ export default function GullyBowlApp() {
                     <div className="bg-white border border-[#B11E48]/10 px-4 py-2 rounded-xl flex items-center gap-2">
                         <Calendar size={14} className="text-[#B11E48]"/><input type="date" value={activeDate.split('/').reverse().join('-')} onChange={(e) => setActiveDate(new Date(e.target.value).toLocaleDateString('en-GB'))} className="text-xs font-black outline-none bg-transparent" />
                     </div>
-                    <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="bg-white border border-[#B11E48]/10 p-4 rounded-xl text-[#B11E48] hover:bg-[#FFFBEB] transition-all"><ArrowUpDown size={18}/></button>
+                    <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="bg-white border border-[#B11E48]/10 p-4 rounded-xl text-[#B11E48] hover:rotate-180 transition-all"><ArrowUpDown size={18}/></button>
                     <button onClick={() => exportData(adminTab)} className="bg-[#B11E48] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase shadow-lg"><Download size={16}/></button>
                     <button onClick={() => signOut(auth)} className="bg-white border border-[#B11E48]/10 p-4 rounded-2xl shadow-sm text-[#B11E48]"><LogOut size={20}/></button>
                 </div>
@@ -215,9 +220,9 @@ export default function GullyBowlApp() {
                     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
                         <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 italic">Batch Fulfillment ({activeDate})</h4>
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Veg Total</p><p className="text-2xl font-black text-green-600">{totals.veg}</p></div>
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Meat Total</p><p className="text-2xl font-black text-red-600">{totals.nv}</p></div>
-                            <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Grand Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Veg</p><p className="text-2xl font-black text-green-600">{totals.veg}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold">Meat</p><p className="text-2xl font-black text-red-600">{totals.nv}</p></div>
+                            <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
                         </div>
                     </div>
                     {['veg', 'nonveg'].map(type => {
@@ -225,7 +230,7 @@ export default function GullyBowlApp() {
                         const set = type === 'veg' ? setVegData : setNvData;
                         return (
                         <div key={type} className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 flex items-center gap-2"><Tag size={12}/> {type} Menu</p>
+                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 italic">{type} Bowl Manager</p>
                             <div className="space-y-3">
                                 <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono outline-none" placeholder="Image URL" />
                                 <input value={data.name} onChange={e => set({...data, name: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl font-bold text-xs" placeholder="Bowl Name" />
@@ -235,7 +240,7 @@ export default function GullyBowlApp() {
                                         <input key={m} value={data[m]} onChange={e => set({...data, [m]: e.target.value})} className="w-full p-2 bg-[#FFFBEB] rounded-lg text-center font-bold text-xs" placeholder={m.toUpperCase()} />
                                     ))}
                                 </div>
-                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md">Update</button>
+                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md">Update Live</button>
                             </div>
                         </div>
                     )})}
@@ -249,18 +254,22 @@ export default function GullyBowlApp() {
                                 allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20">No orders for this batch.</p> : allOrders.map((o, i) => (
                                     <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex justify-between items-center hover:bg-white transition-all">
                                         <div><p className="font-black text-lg text-[#B11E48] uppercase tracking-tighter leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone} • {o.hood}</p></div>
-                                        <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black">MEAT: {o.nvQty}</span>}</div>
+                                        <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black">NV: {o.nvQty}</span>}</div>
                                     </div>
                                 ))
                             ) : (
                                 reviews.length === 0 ? <p className="text-center py-20 italic opacity-20">No gossip for this batch.</p> : reviews.map((r, i) => (
                                     <div key={i} className="p-8 bg-[#FFFBEB]/30 rounded-[3.5rem] border border-[#B11E48]/10 hover:bg-white transition-all">
                                         <div className="flex justify-between items-start mb-6">
-                                            <div><p className="font-black text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p><p className="text-xs font-bold text-stone-400 tracking-widest">{r.phone} • {r.hustle}</p></div>
+                                            <div>
+                                                <p className="font-black text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p>
+                                                <p className="text-xs font-bold text-stone-400 tracking-widest">{r.phone} • {r.hustle}</p>
+                                            </div>
+                                            <p className="text-[9px] font-black text-stone-300 uppercase tracking-widest">{r.date}</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {r.vegText && <div className="p-5 bg-white rounded-3xl border border-green-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText}</div>}
-                                            {r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
+                                            { (r.vegText || r.text) && <div className="p-5 bg-white rounded-3xl border border-green-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText || r.text}</div>}
+                                            { r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
                                         </div>
                                     </div>
                                 ))
