@@ -61,26 +61,33 @@ export default function GullyBowlApp() {
     onSnapshot(doc(db, "menu", "nonveg"), (d) => d.exists() && setNvData(d.data()));
     onSnapshot(doc(db, "settings", "orderControl"), (d) => d.exists() && setIsOrderActive(d.data().active));
     
-    // Logic to show past reviews (no date) + current date reviews
+    // 🔥 THE FIX: Fetch all reviews and filter manually to ensure LEGACY (old) reviews are never hidden
     onSnapshot(query(collection(db, "reviews"), orderBy("timestamp", sortOrder)), (s) => {
-        const filtered = s.docs.map(d => d.data()).filter(r => !r.trialDate || r.trialDate === activeDate);
+        const allData = s.docs.map(d => d.data());
+        const filtered = allData.filter(r => !r.trialDate || r.trialDate === activeDate);
         setReviews(filtered);
     });
 
     onSnapshot(query(collection(db, "orders"), where("trialDate", "==", activeDate), orderBy("timestamp", sortOrder)), (s) => setAllOrders(s.docs.map(d => d.data())));
-    onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(8)), (s) => setLogs(s.docs.map(d => d.data())));
+    onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(10)), (s) => setLogs(s.docs.map(d => d.data())));
     
     return () => unsubscribe();
   }, [activeDate, sortOrder]);
 
+  const handleAdminMgmt = async (email, action) => {
+    if (user.email !== SUPER_ADMIN) return alert("Super Admin restriction.");
+    let newList = action === 'add' ? [...new Set([...adminList, email])] : adminList.filter(e => e !== email);
+    await setDoc(doc(db, "settings", "admins"), { emails: newList });
+  };
+
   const exportData = (type) => {
     const data = type === 'orders' ? allOrders : reviews;
-    const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Address Details", "Maps Link", "Veg", "NV"] : ["Date", "Name", "Mobile", "Veg Review", "NV Review"];
+    const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Address", "Maps", "Veg", "NV"] : ["Date", "Name", "Mobile", "Veg Verdict", "NV Verdict"];
     const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, `"${d.fullAddress}"`, d.mapsLink, d.vegQty, d.nvQty] : [d.date, d.name, `'${d.phone}`, `"${d.vegText || d.text}"`, `"${d.nvText}"`]);
     const csv = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;' }));
-    link.download = `Gully_${type}_${activeDate}.csv`;
+    link.download = `Gully_${type}_Report.csv`;
     link.click();
   };
 
@@ -119,26 +126,26 @@ export default function GullyBowlApp() {
             </div>
           ) : (
             <div className="space-y-8 animate-in slide-in-from-bottom-4">
-               {[ {id:'veg', data:vegData, color: 'green-600', label: '100% VEG'}, {id:'nonveg', data:nvData, color: '[#B11E48]', label: 'NON-VEG'} ].map(item => (
+               {[ {id:'veg', data:vegData, tag:'100% VEG', dot:'bg-green-600', txt:'text-green-600'}, {id:'nonveg', data:nvData, tag:'NON-VEG', dot:'bg-[#B11E48]', txt:'text-[#B11E48]'} ].map(item => (
                  <div key={item.id} className="bg-white rounded-[3.5rem] shadow-xl border border-[#B11E48]/5 overflow-hidden">
                     <div className="relative aspect-square bg-stone-100">
                         <img src={item.data.img || "https://images.unsplash.com"} className="w-full h-full object-cover" />
-                        <div className={`absolute top-6 left-6 px-4 py-1.5 rounded-full bg-white shadow-md flex items-center gap-2 border border-stone-100`}>
-                            <div className={`w-2 h-2 rounded-full bg-${item.color}`}></div>
-                            <span className={`text-[8px] font-black tracking-widest text-${item.color}`}>{item.label}</span>
+                        <div className="absolute top-6 left-6 px-4 py-2 rounded-full bg-white/90 backdrop-blur shadow-md flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${item.dot}`}></div>
+                            <span className={`text-[8px] font-black tracking-widest ${item.txt}`}>{item.tag}</span>
                         </div>
                     </div>
                     <div className="p-8">
-                        <div className="flex justify-between items-start mb-4">
+                        <div className="flex justify-between items-start mb-6">
                             <div className="flex-1">
                                 <h3 className="text-4xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
-                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase tracking-tighter">"{item.data.tagline}"</p>
+                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase">"{item.data.tagline}"</p>
                             </div>
                             {userMode === 'order' && (
                                 <div className="flex items-center gap-3 bg-[#FFFBEB] p-2 rounded-2xl border border-[#B11E48]/10 ml-4">
-                                    <button onClick={() => setCart({...cart, [item.id]: Math.max(0, cart[item.id]-1)})} className="p-2 text-[#B11E48]"><Minus size={16}/></button>
+                                    <button onClick={() => setCart({...cart, [item.id]: Math.max(0, cart[item.id]-1)})} className="p-2 text-[#B11E48]"><Minus/></button>
                                     <span className="font-black text-xl">{cart[item.id]}</span>
-                                    <button onClick={() => setCart({...cart, [item.id]: cart[item.id]+1})} className="p-2 text-[#B11E48]"><Plus size={16}/></button>
+                                    <button onClick={() => setCart({...cart, [item.id]: cart[item.id]+1})} className="p-2 text-[#B11E48]"><Plus/></button>
                                 </div>
                             )}
                         </div>
@@ -157,19 +164,19 @@ export default function GullyBowlApp() {
                  </div>
                ))}
                <div className="bg-white p-10 rounded-[4rem] shadow-2xl border border-[#B11E48]/5 space-y-4">
-                  <h3 className="text-3xl font-serif font-black italic text-[#B11E48] text-center">{userMode === 'order' ? 'Checkout' : 'Drop the Verdict'}</h3>
+                  <h3 className="text-3xl font-serif font-black italic text-[#B11E48] text-center">{userMode === 'order' ? 'Checkout' : 'Verdict'}</h3>
                   {userMode === 'order' ? (
                     <>
-                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter">The bowl is on us, but delivery is by you! 🥣</p>
+                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter">The bowl is on us, delivery is by you! 🥣</p>
                         <div className="space-y-3">
                             <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-                            <textarea id="o-addr" placeholder="Detailed Address (Flat No, Apartment, Location) *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-24"></textarea>
+                            <textarea id="o-addr" placeholder="Flat No, Apartment, Location Details *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-24"></textarea>
                             <input id="o-maps" placeholder="Google Maps Link (Optional)" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
                         </div>
                         <button onClick={async () => {
                             const p = document.getElementById('o-phone').value;
                             const a = document.getElementById('o-addr').value;
-                            if(!p || !a || (cart.veg + cart.nonveg === 0)) return alert("Add bowls & fill delivery info!");
+                            if(!p || !a || (cart.veg + cart.nonveg === 0)) return alert("Check bowls & address!");
                             await addDoc(collection(db, "orders"), { 
                                 name: user.displayName, phone: p, fullAddress: a, mapsLink: document.getElementById('o-maps').value,
                                 vegQty: cart.veg, nvQty: cart.nonveg, trialDate: activeDate, timestamp: Date.now(), date: new Date().toLocaleString() 
@@ -202,8 +209,7 @@ export default function GullyBowlApp() {
         /* --- ADMIN DASHBOARD --- */
         <main className="max-w-screen-2xl mx-auto pt-16 px-8 flex flex-col">
             <div className="flex justify-between items-start mb-12">
-                <div>
-                    <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">The Kitchen Desk</h2>
+                <div><h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Operational Control</h2>
                     <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5 shadow-sm">
                         <button onClick={() => setAdminTab('orders')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'orders' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Orders</button>
                         <button onClick={() => setAdminTab('reviews')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'reviews' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Reviews</button>
@@ -222,10 +228,10 @@ export default function GullyBowlApp() {
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
                 <div className="xl:col-span-1 space-y-8">
                     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                        <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 italic">Batch Fulfillment ({activeDate})</h4>
+                        <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 italic">Daily Fulfillment ({activeDate})</h4>
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-green-600">Veg Total</p><p className="text-2xl font-black">{totals.veg}</p></div>
-                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48]">Meat Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-green-600 uppercase">Veg Total</p><p className="text-2xl font-black">{totals.veg}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48] uppercase">Meat Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
                             <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase">Grand Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
                         </div>
                     </div>
@@ -234,17 +240,13 @@ export default function GullyBowlApp() {
                         const set = type === 'veg' ? setVegData : setNvData;
                         return (
                         <div key={type} className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 flex items-center gap-2"><Tag size={12}/> {type} Menu</p>
+                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 italic">{type} Bowl Manager</p>
                             <div className="space-y-3">
-                                <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono outline-none" placeholder="Image URL" />
+                                <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono outline-none" placeholder="PostImg URL" />
                                 <input value={data.name} onChange={e => set({...data, name: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl font-bold text-xs" placeholder="Bowl Name" />
-                                <input value={data.tagline} onChange={e => set({...data, tagline: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl italic text-xs" placeholder="Description..." />
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['p', 'f', 'c'].map(m => (
-                                        <input key={m} value={data[m]} onChange={e => set({...data, [m]: e.target.value})} className="w-full p-2 bg-[#FFFBEB] rounded-lg text-center font-bold text-xs" placeholder={m.toUpperCase()} />
-                                    ))}
-                                </div>
-                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md">Update Live</button>
+                                <input value={data.tagline} onChange={e => set({...data, tagline: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl italic text-xs" placeholder="Tagline" />
+                                <div className="grid grid-cols-3 gap-2">{['p', 'f', 'c'].map(m => (<input key={m} value={data[m]} onChange={e => set({...data, [m]: e.target.value})} className="w-full p-2 bg-[#FFFBEB] rounded-lg text-center font-bold text-xs" placeholder={m.toUpperCase()} />))}</div>
+                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase shadow-md">Update Live</button>
                             </div>
                         </div>
                     )})}
@@ -252,37 +254,37 @@ export default function GullyBowlApp() {
 
                 <div className="xl:col-span-3">
                     <div className="bg-white p-10 rounded-[4rem] shadow-sm border border-[#B11E48]/5 h-[850px] flex flex-col">
-                        <h3 className="text-3xl font-serif font-black italic text-[#B11E48] mb-8">{adminTab === 'orders' ? 'Batch Tracker' : 'Trial Gossip'} ({activeDate})</h3>
+                        <h3 className="text-3xl font-serif font-black italic text-[#B11E48] mb-8">{adminTab === 'orders' ? 'Batch Tracker' : 'Trial Gossip'}</h3>
                         <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
                             {adminTab === 'orders' ? (
-                                allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20">No orders for this batch.</p> : allOrders.map((o, i) => (
-                                    <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex flex-col gap-4 hover:bg-white transition-all">
+                                allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No orders for this batch.</p> : allOrders.map((o, i) => (
+                                    <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex flex-col gap-4">
                                         <div className="flex justify-between items-center">
-                                            <div><p className="font-black text-lg text-[#B11E48] uppercase tracking-tighter leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone}</p></div>
-                                            <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black">NV: {o.nvQty}</span>}</div>
+                                            <div><p className="font-black text-lg text-[#B11E48] uppercase leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone}</p></div>
+                                            <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black shadow-sm">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black shadow-sm">NV: {o.nvQty}</span>}</div>
                                         </div>
                                         <div className="pt-4 border-t border-stone-100 flex items-start gap-4">
-                                            <MapPin size={18} className="text-[#B11E48] mt-1 shrink-0" />
+                                            <MapPin size={18} className="text-[#B11E48] shrink-0 mt-1" />
                                             <div className="flex-1">
                                                 <p className="text-[11px] font-bold text-stone-600 leading-relaxed uppercase tracking-tight">{o.fullAddress}</p>
-                                                {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[10px] font-black text-[#B11E48] bg-[#B11E48]/5 px-3 py-1.5 rounded-lg border border-[#B11E48]/10 hover:bg-[#B11E48] hover:text-white transition-all"><Navigation size={12}/> OPEN GOOGLE MAPS</a>}
+                                                {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[10px] font-black text-[#B11E48] bg-[#B11E48]/5 px-3 py-1.5 rounded-lg border border-[#B11E48]/10 hover:bg-[#B11E48] hover:text-white transition-all"><Navigation size={12}/> GOOGLE MAPS</a>}
                                             </div>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                reviews.length === 0 ? <p className="text-center py-20 italic opacity-20">No gossip for this batch.</p> : reviews.map((r, i) => (
+                                reviews.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No gossip yet.</p> : reviews.map((r, i) => (
                                     <div key={i} className="p-8 bg-[#FFFBEB]/30 rounded-[3.5rem] border border-[#B11E48]/10 hover:bg-white transition-all">
                                         <div className="flex justify-between items-start mb-6">
                                             <div>
                                                 <p className="font-black text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p>
-                                                <p className="text-xs font-bold text-stone-400 tracking-widest">{r.phone} • {r.hustle}</p>
+                                                <p className="text-[10px] font-bold text-stone-400 tracking-widest">{r.phone} • {r.hustle || "Sampler"}</p>
                                             </div>
-                                            <p className="text-[9px] font-black text-stone-300 uppercase tracking-widest">{r.date}</p>
+                                            <p className="text-[9px] font-black text-stone-300 uppercase tracking-widest opacity-60">{r.trialDate || "Legacy Review"}</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            { (r.vegText || r.text) && <div className="p-5 bg-white rounded-3xl border border-green-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText || r.text}</div>}
-                                            { r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
+                                            {(r.vegText || r.text) && <div className="p-5 bg-white rounded-3xl border border-green-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText || r.text}</div>}
+                                            {r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-50 text-sm italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
                                         </div>
                                     </div>
                                 ))
