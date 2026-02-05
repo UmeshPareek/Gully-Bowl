@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
-import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp, ShieldCheck, History, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat, Navigation, Map, CreditCard, IndianRupee, QrCode } from 'lucide-react';
+import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, ShieldCheck, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat, Map, CreditCard, IndianRupee, QrCode } from 'lucide-react';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC_7TR7XJwZDtOf2NytiJzaKlqnDApZDDY",
@@ -80,17 +80,6 @@ export default function GullyBowlApp() {
     total: acc.total + (curr.vegQty || 0) + (curr.nvQty || 0)
   }), { veg: 0, nv: 0, total: 0 });
 
-  const exportData = (type) => {
-    const data = type === 'orders' ? allOrders : reviews;
-    const headers = type === 'orders' ? ["Date", "Name", "Mobile", "Address", "Maps Link", "Veg", "NV", "Fee Paid"] : ["Date", "Name", "Mobile", "Veg Review", "Meat Review"];
-    const rows = data.map(d => type === 'orders' ? [d.date, d.name, `'${d.phone}`, `"${d.fullAddress}"`, d.mapsLink, d.vegQty, d.nvQty, d.fee] : [d.date, d.name, `'${d.phone}`, `"${d.vegText || d.text}"`, `"${d.nvText}"`]);
-    const csv = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;' }));
-    link.download = `Gully_${type}_${activeDate}.csv`;
-    link.click();
-  };
-
   const handlePlaceOrder = async () => {
     const p = document.getElementById('o-phone').value;
     const a = document.getElementById('o-addr').value;
@@ -103,12 +92,19 @@ export default function GullyBowlApp() {
         fee: paySettings.fee, timestamp: Date.now(), date: new Date().toLocaleString() 
     };
 
-    // Construct UPI Link
-    const upiLink = `upi://pay?pa=${paySettings.upi}&pn=GullyBowl&am=${paySettings.fee}&cu=INR`;
+    // 🔥 THE UPGRADE: Direct UPI Intent URL
+    // pa: UPI ID, pn: Payee Name, am: Amount, cu: Currency
+    const upiIntent = `upi://pay?pa=${paySettings.upi}&pn=Gully%20Bowl&am=${paySettings.fee}&cu=INR&tn=DeliveryFee_Batch_${activeDate}`;
     
     await addDoc(collection(db, "orders"), orderData);
-    alert(`Order data saved. Redirecting to UPI to pay Delivery Fee: ₹${paySettings.fee}`);
-    window.location.href = upiLink;
+    
+    // Check if on mobile to trigger app selector, else show QR instructions
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.location.href = upiIntent;
+    } else {
+        alert(`Order saved! Since you're on desktop, please scan your UPI app QR or pay ₹${paySettings.fee} to ${paySettings.upi}.`);
+        window.open(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiIntent)}`, '_blank');
+    }
     setUserMode(null);
   };
 
@@ -116,7 +112,7 @@ export default function GullyBowlApp() {
     <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-6">
       <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-[#B11E48]/10">
         <img src={BRAND_LOGO} className="w-40 mx-auto mb-8" alt="Gully Bowl" />
-        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl uppercase">ENTER GULLY</button>
+        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl uppercase">Enter Gully</button>
       </div>
     </div>
   );
@@ -126,7 +122,7 @@ export default function GullyBowlApp() {
       {isAdmin && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex gap-4 bg-[#B11E48] text-white p-2 rounded-full shadow-2xl">
           <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Store</button>
-          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin</button>
+          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin Desk</button>
         </nav>
       )}
 
@@ -135,9 +131,9 @@ export default function GullyBowlApp() {
           <img src={BRAND_LOGO} className="w-28 mx-auto mb-10" alt="Logo" />
           {!userMode ? (
             <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-[#B11E48]/5 text-center space-y-6">
-              <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">The Selection</h3>
-              <button onClick={() => setUserMode('order')} className="w-full py-6 bg-[#B11E48] text-white rounded-[2.5rem] font-black shadow-xl flex items-center justify-center gap-3 uppercase tracking-tighter">Order Trial Bowl <ShoppingBag/></button>
-              <button onClick={() => setUserMode('review')} className="w-full py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[2.5rem] font-black flex items-center justify-center gap-3 uppercase tracking-tighter">Give Verdict <MessageSquare/></button>
+              <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">The Gully Path</h3>
+              <button onClick={() => setUserMode('order')} className="w-full py-6 bg-[#B11E48] text-white rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-3">ORDER BOWL <ShoppingBag/></button>
+              <button onClick={() => setUserMode('review')} className="w-full py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[2rem] font-black flex items-center justify-center gap-3">GIVE VERDICT <MessageSquare/></button>
             </div>
           ) : (
             <div className="space-y-8 animate-in slide-in-from-bottom-4">
@@ -147,14 +143,14 @@ export default function GullyBowlApp() {
                         <img src={item.data.img || "https://images.unsplash.com"} className="w-full h-full object-cover" />
                         <div className="absolute top-6 left-6 px-4 py-2 rounded-full bg-white/90 backdrop-blur shadow-md flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${item.dot}`}></div>
-                            <span className={`text-[8px] font-black tracking-[0.2em] ${item.txt}`}>{item.tag}</span>
+                            <span className={`text-[8px] font-black tracking-widest ${item.txt}`}>{item.tag}</span>
                         </div>
                     </div>
                     <div className="p-8">
                         <div className="flex justify-between items-start mb-6">
                             <div className="flex-1">
                                 <h3 className="text-4xl font-serif font-black text-[#B11E48] leading-tight">{item.data.name}</h3>
-                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase">"{item.data.tagline}"</p>
+                                <p className="text-[10px] font-bold text-stone-400 mt-1 italic uppercase tracking-tighter leading-tight">"{item.data.tagline}"</p>
                             </div>
                             {userMode === 'order' && (
                                 <div className="flex items-center gap-3 bg-[#FFFBEB] p-2 rounded-2xl border border-[#B11E48]/10 ml-4">
@@ -178,37 +174,35 @@ export default function GullyBowlApp() {
                     </div>
                  </div>
                ))}
-               <div className="bg-white p-10 rounded-[4rem] shadow-2xl border border-[#B11E48]/5 space-y-4 text-center">
-                  <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">{userMode === 'order' ? 'Checkout' : 'Verdict'}</h3>
+               <div className="bg-white p-10 rounded-[4rem] shadow-2xl border border-[#B11E48]/5 space-y-4">
+                  <h3 className="text-3xl font-serif font-black italic text-[#B11E48] text-center mb-4">{userMode === 'order' ? 'Checkout' : 'Verdict'}</h3>
                   {userMode === 'order' ? (
                     <>
-                        <div className="bg-green-50 p-4 rounded-3xl mb-4 border border-green-100">
-                            <p className="text-[10px] font-black text-green-700 uppercase tracking-tighter">BOWL IS ON US • DELIVERY FEE ₹{paySettings.fee}</p>
+                        <div className="bg-green-50 p-4 rounded-2xl text-center mb-2">
+                             <p className="text-[9px] font-black text-green-700 uppercase tracking-tighter">THE BOWL IS ON US • DELIVERY FEE ₹{paySettings.fee}</p>
                         </div>
-                        <div className="space-y-3 text-left">
+                        <div className="space-y-3">
                             <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-                            <textarea id="o-addr" placeholder="Full Address (Flat No, Apartment) *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-24"></textarea>
-                            <input id="o-maps" placeholder="Google Maps Link" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                            <textarea id="o-addr" placeholder="Flat No, Building, Landmark Details *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-24"></textarea>
+                            <input id="o-maps" placeholder="Paste Google Maps Link" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
                         </div>
-                        <button onClick={handlePlaceOrder} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl uppercase mt-4 flex items-center justify-center gap-3">Pay & Confirm <CreditCard/></button>
+                        <button onClick={handlePlaceOrder} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl uppercase mt-4 flex items-center justify-center gap-3 transition-all active:scale-95">PAY & CONFIRM <IndianRupee/></button>
                     </>
                   ) : (
                     <>
-                        <div className="space-y-3 text-left">
-                            <input id="u-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-                            <input id="u-hustle" placeholder="Your Profession? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
-                            <textarea id="u-veg-text" placeholder="Veg Verdict..." className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-24 outline-none border border-[#B11E48]/10"></textarea>
-                            <textarea id="u-nv-text" placeholder="Meat Verdict..." className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-24 outline-none border border-[#B11E48]/10"></textarea>
-                        </div>
+                        <input id="u-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                        <input id="u-hustle" placeholder="Your Profession? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+                        <textarea id="u-veg-text" placeholder="Veg Verdict..." className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-24 outline-none border border-[#B11E48]/10"></textarea>
+                        <textarea id="u-nv-text" placeholder="NV Verdict..." className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-24 outline-none border border-[#B11E48]/10"></textarea>
                         <button onClick={async () => {
                             const p = document.getElementById('u-phone').value;
                             if(!p) return alert("Phone Required!");
                             await addDoc(collection(db, "reviews"), { name: user.displayName, phone: p, hustle: document.getElementById('u-hustle').value, vegText: document.getElementById('u-veg-text').value, nvText: document.getElementById('u-nv-text').value, timestamp: Date.now(), trialDate: activeDate, date: new Date().toLocaleString() });
-                            alert("Verdict Received! 🥣"); setUserMode(null);
+                            alert("Gossip Received! 🥣"); setUserMode(null);
                         }} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl uppercase mt-4">Submit Verdict</button>
                     </>
                   )}
-                  <button onClick={() => setUserMode(null)} className="w-full py-4 text-[10px] font-black text-stone-300 uppercase tracking-widest">Back</button>
+                  <button onClick={() => setUserMode(null)} className="w-full py-4 text-[10px] font-black text-stone-300 uppercase tracking-widest text-center">Back</button>
                </div>
             </div>
           )}
@@ -217,8 +211,8 @@ export default function GullyBowlApp() {
         /* --- ADMIN DASHBOARD --- */
         <main className="max-w-screen-2xl mx-auto pt-16 px-8 flex flex-col">
             <div className="flex justify-between items-start mb-12">
-                <div><h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Command Desk</h2>
-                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5 shadow-sm">
+                <div><h2 className="text-5xl font-serif font-black italic text-[#B11E48]">Gully Admin</h2>
+                    <div className="flex gap-4 mt-6 bg-white p-2 rounded-2xl border border-[#B11E48]/5">
                         <button onClick={() => setAdminTab('orders')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'orders' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Orders</button>
                         <button onClick={() => setAdminTab('reviews')} className={`px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'reviews' ? 'bg-[#B11E48] text-white' : 'text-[#B11E48]/40'}`}>Reviews</button>
                     </div>
@@ -228,8 +222,8 @@ export default function GullyBowlApp() {
                         <Calendar size={14} className="text-[#B11E48]"/><input type="date" value={activeDate.split('/').reverse().join('-')} onChange={(e) => setActiveDate(new Date(e.target.value).toLocaleDateString('en-GB'))} className="text-xs font-black outline-none bg-transparent" />
                     </div>
                     <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="bg-white border border-[#B11E48]/10 p-4 rounded-xl text-[#B11E48] hover:rotate-180 transition-all shadow-sm"><ArrowUpDown size={18}/></button>
-                    <button onClick={() => exportData(adminTab)} className="bg-[#B11E48] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase shadow-lg"><Download size={16}/></button>
-                    <button onClick={() => signOut(auth)} className="bg-white border border-[#B11E48]/10 p-4 rounded-2xl shadow-sm text-[#B11E48]"><LogOut size={20}/></button>
+                    <button onClick={() => { const e = prompt("New Admin Email:"); if(e) handleAdminMgmt(e, 'add'); }} className="bg-white border border-[#B11E48]/10 p-4 rounded-xl text-[#B11E48]"><Users size={20}/></button>
+                    <button onClick={() => signOut(auth)} className="bg-white border border-[#B11E48]/10 p-4 rounded-xl text-[#B11E48]"><LogOut size={20}/></button>
                 </div>
             </div>
 
@@ -238,59 +232,55 @@ export default function GullyBowlApp() {
                     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
                         <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6 flex items-center gap-2"><IndianRupee size={12}/> Finance console</h4>
                         <div className="space-y-4">
-                            <div><p className="text-[8px] font-black uppercase text-stone-300 mb-1">UPI ID</p><input value={paySettings.upi} onChange={e => setPaySettings({...paySettings, upi: e.target.value})} className="w-full p-3 bg-[#FFFBEB] rounded-xl text-[10px] font-mono outline-none border border-transparent focus:border-[#B11E48]/20" /></div>
-                            <div><p className="text-[8px] font-black uppercase text-stone-300 mb-1">Fee (₹)</p><input value={paySettings.fee} onChange={e => setPaySettings({...paySettings, fee: e.target.value})} className="w-full p-3 bg-[#FFFBEB] rounded-xl text-lg font-black outline-none" /></div>
-                            <button onClick={async () => { await setDoc(doc(db, "settings", "payment"), paySettings); alert("Payment settings live!"); }} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase">Update Payments</button>
+                            <div><p className="text-[8px] font-black uppercase text-stone-300 mb-1">Payment ID</p><input value={paySettings.upi} onChange={e => setPaySettings({...paySettings, upi: e.target.value})} className="w-full p-3 bg-[#FFFBEB] rounded-xl text-[10px] font-mono outline-none" /></div>
+                            <div><p className="text-[8px] font-black uppercase text-stone-300 mb-1">Delivery Fee (₹)</p><input value={paySettings.fee} onChange={e => setPaySettings({...paySettings, fee: e.target.value})} className="w-full p-3 bg-[#FFFBEB] rounded-xl text-lg font-black outline-none" /></div>
+                            <button onClick={async () => { await setDoc(doc(db, "settings", "payment"), paySettings); alert("Finance Updated!"); }} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95">Sync Settings</button>
                         </div>
                     </div>
-                    {['veg', 'nonveg'].map(type => {
-                        const data = type === 'veg' ? vegData : nvData;
-                        const set = type === 'veg' ? setVegData : setNvData;
-                        return (
-                        <div key={type} className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                            <p className="text-[10px] font-black uppercase text-stone-400 mb-6 italic">{type} Bowl Manager</p>
-                            <div className="space-y-3">
-                                <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono outline-none" placeholder="Image URL" />
-                                <input value={data.name} onChange={e => set({...data, name: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl font-bold text-xs" placeholder="Bowl Name" />
-                                <input value={data.tagline} onChange={e => set({...data, tagline: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl italic text-xs" placeholder="Description..." />
-                                <div className="grid grid-cols-3 gap-2">{['p', 'f', 'c'].map(m => (<input key={m} value={data[m]} onChange={e => set({...data, [m]: e.target.value})} className="w-full p-2 bg-[#FFFBEB] rounded-lg text-center font-bold text-xs" placeholder={m.toUpperCase()} />))}</div>
-                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black uppercase shadow-md">Update Live</button>
-                            </div>
+                    <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
+                        <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-6">Fulfillment ({activeDate})</h4>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-green-600">Veg Total</p><p className="text-2xl font-black">{totals.veg}</p></div>
+                            <div className="flex justify-between items-center"><p className="text-xs font-bold text-[#B11E48]">Meat Total</p><p className="text-2xl font-black">{totals.nv}</p></div>
+                            <div className="pt-4 border-t flex justify-between items-center"><p className="text-sm font-black uppercase tracking-tighter">Grand Total</p><p className="text-4xl font-black text-[#B11E48]">{totals.total}</p></div>
                         </div>
-                    )})}
+                    </div>
                 </div>
 
                 <div className="xl:col-span-3">
                     <div className="bg-white p-10 rounded-[4rem] shadow-sm border border-[#B11E48]/5 h-[850px] flex flex-col">
-                        <h3 className="text-3xl font-serif font-black italic text-[#B11E48] mb-8">{adminTab === 'orders' ? 'Batch Tracker' : 'Trial Gossip'}</h3>
+                        <div className="flex justify-between items-center mb-8">
+                             <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">{adminTab === 'orders' ? 'Batch Tracker' : 'Trial Gossip'}</h3>
+                             <button onClick={() => exportData(adminTab)} className="bg-[#B11E48] text-white px-6 py-2 rounded-xl text-[8px] font-black uppercase shadow-lg">Download master report</button>
+                        </div>
                         <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
                             {adminTab === 'orders' ? (
-                                allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No orders logged.</p> : allOrders.map((o, i) => (
+                                allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No active orders.</p> : allOrders.map((o, i) => (
                                     <div key={i} className="p-6 bg-[#FFFBEB]/50 rounded-[2.5rem] border border-[#B11E48]/5 flex flex-col gap-4">
                                         <div className="flex justify-between items-center">
-                                            <div><p className="font-black text-lg text-[#B11E48] uppercase leading-none">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone}</p></div>
-                                            <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black shadow-sm">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black shadow-sm">MEAT: {o.nvQty}</span>}</div>
+                                            <div><p className="font-black text-lg text-[#B11E48] uppercase leading-none tracking-tighter">{o.name}</p><p className="text-xs font-bold text-stone-400 mt-2">{o.phone}</p></div>
+                                            <div className="flex gap-4">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-6 py-2 rounded-full text-xs font-black shadow-sm tracking-widest">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-6 py-2 rounded-full text-xs font-black shadow-sm tracking-widest">MEAT: {o.nvQty}</span>}</div>
                                         </div>
                                         <div className="pt-4 border-t border-stone-100 flex justify-between items-center">
                                             <div className="flex items-start gap-4 flex-1">
                                                 <MapPin size={18} className="text-[#B11E48] shrink-0 mt-1" />
                                                 <div>
                                                     <p className="text-[11px] font-bold text-stone-600 leading-relaxed uppercase tracking-tight">{o.fullAddress}</p>
-                                                    {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[10px] font-black text-white bg-[#B11E48] px-4 py-2 rounded-lg"><Map size={12}/> OPEN MAPS</a>}
+                                                    {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[10px] font-black text-white bg-[#B11E48] px-4 py-2 rounded-lg shadow-md"><Map size={12}/> OPEN MAPS</a>}
                                                 </div>
                                             </div>
                                             <div className="bg-green-100 px-4 py-2 rounded-2xl border border-green-200 text-center shadow-sm">
-                                                <p className="text-[8px] font-black text-green-800 uppercase">Paid Fee</p>
+                                                <p className="text-[8px] font-black text-green-800 uppercase tracking-tighter">FEE PAID</p>
                                                 <p className="text-sm font-black text-green-700">₹{o.fee}</p>
                                             </div>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                reviews.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No gossip yet.</p> : reviews.map((r, i) => (
+                                reviews.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No verdicts recorded.</p> : reviews.map((r, i) => (
                                     <div key={i} className="p-8 bg-[#FFFBEB]/30 rounded-[3.5rem] border border-[#B11E48]/10 hover:bg-white transition-all shadow-sm">
                                         <div className="flex justify-between items-start mb-6">
-                                            <div><p className="font-black text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p><p className="text-[10px] font-bold text-stone-400">{r.phone} • {r.hustle || "Sampler"}</p></div>
+                                            <div><p className="font-black text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p><p className="text-[10px] font-bold text-stone-400 tracking-widest leading-none mt-2">{r.phone} • {r.hustle || "Sampler"}</p></div>
                                             <p className="text-[9px] font-black text-stone-300 uppercase tracking-widest opacity-60">{r.trialDate || "Legacy"}</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
