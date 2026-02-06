@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
-import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, ShieldCheck, ArrowUpDown, Trash2, ShoppingBag, Clock, Plus, Minus, ClipboardList, MessageSquare, Tag, Flame, Zap, Wheat, Navigation, Map, CreditCard, IndianRupee } from 'lucide-react';
+import { Download, Users, LayoutDashboard, Utensils, Send, CheckCircle, Link as LinkIcon, Phone, User as UserIcon, MapPin, Briefcase, Camera, LogOut, Calendar, TrendingUp, ShieldCheck, History, Filter, ArrowUpDown, Trash2 } from 'lucide-react';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC_7TR7XJwZDtOf2NytiJzaKlqnDApZDDY",
@@ -26,22 +26,17 @@ const INITIAL_ADMINS = [SUPER_ADMIN];
 export default function GullyBowlApp() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [view, setView] = useState('user'); 
-  const [userMode, setUserMode] = useState(null); 
+  const [view, setView] = useState('user');
+  const [selectedTab, setSelectedTab] = useState('Veg');
   const [adminList, setAdminList] = useState(INITIAL_ADMINS);
   
-  const [vegData, setVegData] = useState({ name: "Gully Green", tagline: "Gourmet Soul", img: "", p: "0", f: "0", c: "0" });
-  const [nvData, setNvData] = useState({ name: "Gully Meat", tagline: "Street Flavors", img: "", p: "0", f: "0", c: "0" });
-  const [paySettings, setPaySettings] = useState({ fee: "150", upi: "pareeku01@okaxis" });
-  const [isOrderActive, setIsOrderActive] = useState(false);
-  
-  const [cart, setCart] = useState({ veg: 0, nonveg: 0 });
+  const [vegData, setVegData] = useState({ name: "Gully Green", tagline: "Gourmet Soul", p: "0", f: "0", c: "0", img: "" });
+  const [nvData, setNvData] = useState({ name: "Gully Meat", tagline: "Street Flavors", p: "0", f: "0", c: "0", img: "" });
   const [reviews, setReviews] = useState([]);
-  const [allOrders, setAllOrders] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [activeDate, setActiveDate] = useState(new Date().toLocaleDateString('en-GB'));
-  const [adminTab, setAdminTab] = useState('orders'); 
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [activeTrialDate, setActiveTrialDate] = useState(new Date().toLocaleDateString('en-GB'));
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
+  const [adminSearch, setAdminSearch] = useState("");
 
   const BRAND_LOGO = "https://raw.githubusercontent.com/UmeshPareek/Gully-Bowl/main/Gully%20Bowl%20Logo%20(2).png";
 
@@ -60,232 +55,238 @@ export default function GullyBowlApp() {
 
     onSnapshot(doc(db, "menu", "veg"), (d) => d.exists() && setVegData(d.data()));
     onSnapshot(doc(db, "menu", "nonveg"), (d) => d.exists() && setNvData(d.data()));
-    onSnapshot(doc(db, "settings", "payment"), (d) => d.exists() && setPaySettings(d.data()));
-    onSnapshot(doc(db, "settings", "orderControl"), (d) => d.exists() && setIsOrderActive(d.data().active));
-    
     onSnapshot(query(collection(db, "reviews"), orderBy("timestamp", sortOrder)), (s) => {
-        const allData = s.docs.map(d => d.data());
-        setReviews(allData.filter(r => !r.trialDate || r.trialDate === activeDate));
+        setReviews(s.docs.map(d => ({id: d.id, ...d.data()})));
     });
-
-    onSnapshot(query(collection(db, "orders"), where("trialDate", "==", activeDate), orderBy("timestamp", sortOrder)), (s) => setAllOrders(s.docs.map(d => d.data())));
-    onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(8)), (s) => setLogs(s.docs.map(d => d.data())));
+    onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(20)), (s) => {
+        setLogs(s.docs.map(d => d.data()));
+    });
     
     return () => unsubscribe();
-  }, [activeDate, sortOrder]);
+  }, [sortOrder]);
 
-  const totals = allOrders.reduce((acc, curr) => ({
-    veg: acc.veg + (curr.vegQty || 0),
-    nv: acc.nv + (curr.nvQty || 0),
-    total: acc.total + (curr.vegQty || 0) + (curr.nvQty || 0)
-  }), { veg: 0, nv: 0, total: 0 });
+  const logAction = async (action) => {
+    await addDoc(collection(db, "logs"), {
+      admin: user.email,
+      action: action,
+      timestamp: Date.now(),
+      date: new Date().toLocaleString()
+    });
+  };
 
-  const handlePlaceOrder = async () => {
-    const p = document.getElementById('o-phone').value;
-    const a = document.getElementById('o-addr').value;
-    const m = document.getElementById('o-maps').value;
-    if(!p || !a || (cart.veg + cart.nonveg === 0)) return alert("Quantity & Address Required!");
+  const handleAdminManagement = async (email, action) => {
+    if (user.email !== SUPER_ADMIN) return alert("Only the Super Admin can manage other admins.");
+    if (email === SUPER_ADMIN) return alert("Super Admin status is permanent.");
 
-    const orderData = { 
-        name: user.displayName, phone: p, fullAddress: a, mapsLink: m,
-        vegQty: cart.veg, nvQty: cart.nonveg, trialDate: activeDate, 
-        fee: paySettings.fee, timestamp: Date.now(), date: new Date().toLocaleString() 
-    };
-
-    const upiIntent = `upi://pay?pa=${paySettings.upi}&pn=Gully%20Bowl&am=${paySettings.fee}&cu=INR&tn=DeliveryFee_Batch_${activeDate}`;
-    await addDoc(collection(db, "orders"), orderData);
-    
-    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        window.location.href = upiIntent;
+    let newList = [...adminList];
+    if (action === 'add') {
+      if (!newList.includes(email)) newList.push(email);
     } else {
-        window.open(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiIntent)}`, '_blank');
+      newList = newList.filter(e => e !== email);
     }
-    setUserMode(null);
+
+    await setDoc(doc(db, "settings", "admins"), { emails: newList });
+    await logAction(`${action === 'add' ? 'Added' : 'Removed'} admin: ${email}`);
+  };
+
+  const exportToExcel = () => {
+    if (reviews.length === 0) return alert("No verdicts to export!");
+    const headers = ["Date", "Trial Date", "Customer Name", "Mobile", "Hustle", "Hood", "Tried", "Veg Review", "Non-Veg Review"];
+    const rows = reviews.map(r => [r.date, r.trialDate || r.date.split(',')[0], r.name, `'${r.phone || ""}`, r.hustle || "", r.hood || "", r.tried || "", `"${(r.vegText || "").replace(/"/g, '""')}"`, `"${(r.nvText || "").replace(/"/g, '""')}"`]);
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Gully_Bowl_Master_Report.csv`;
+    a.click();
+  };
+
+  const submitVerdict = async () => {
+    const phone = document.getElementById('u-phone').value.trim();
+    const hustle = document.getElementById('u-hustle').value.trim();
+    const hood = document.getElementById('u-hood').value.trim();
+    let vegText = document.getElementById('u-veg-text')?.value.trim() || "";
+    let nvText = document.getElementById('u-nv-text')?.value.trim() || "";
+
+    if (!phone || !hustle || !hood || (selectedTab !== 'Non-Veg' && !vegText) || (selectedTab !== 'Veg' && !nvText)) {
+      return alert("Wait! Every section is required for the Gully Verdict. 🥗");
+    }
+
+    const reviewData = { 
+        name: user.displayName, phone, hustle, hood, tried: selectedTab, vegText, nvText, 
+        trialDate: activeTrialDate, timestamp: Date.now(), date: new Date().toLocaleString() 
+    };
+    await addDoc(collection(db, "reviews"), reviewData);
+    window.location.href = `https://wa.me/917024185979?text=*GULLY VERDICT*%0A*Trial:* ${activeTrialDate}%0A*From:* ${user.displayName}`;
   };
 
   if (!user) return (
-    <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-4">
-      <div className="bg-white p-8 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-[#B11E48]/10">
-        <img src={BRAND_LOGO} className="w-32 md:w-40 mx-auto mb-8" alt="Gully Bowl" />
-        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl uppercase">Enter Gully</button>
+    <div className="min-h-screen bg-[#FFFBEB] flex items-center justify-center p-6">
+      <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center max-w-sm w-full border border-[#B11E48]/10">
+        <img src={BRAND_LOGO} className="w-40 mx-auto mb-8" alt="Gully Bowl" />
+        <button onClick={() => signInWithPopup(auth, provider)} className="w-full py-4 bg-[#B11E48] text-white rounded-2xl font-black shadow-xl">ENTER THE GULLY</button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#FFFBEB] text-[#1A1A1A] pb-24 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[#FFFBEB] text-[#1A1A1A] pb-32 font-sans">
       {isAdmin && (
-        <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex gap-2 bg-[#B11E48] text-white p-1.5 rounded-full shadow-2xl w-max max-w-[90%]">
-          <button onClick={() => setView('user')} className={`px-5 py-2.5 rounded-full text-[10px] font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Store</button>
-          <button onClick={() => setView('admin')} className={`px-5 py-2.5 rounded-full text-[10px] font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin</button>
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex gap-4 bg-[#B11E48] text-white p-2 rounded-full shadow-2xl">
+          <button onClick={() => setView('user')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'user' ? 'bg-white text-[#B11E48]' : ''}`}>Consumer</button>
+          <button onClick={() => setView('admin')} className={`px-6 py-3 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-white text-[#B11E48]' : ''}`}>Admin Desk</button>
         </nav>
       )}
 
       {view === 'user' ? (
-        <main className="w-full max-w-md mx-auto pt-8 md:pt-16 px-4">
-          <img src={BRAND_LOGO} className="w-24 md:w-28 mx-auto mb-8 md:mb-10" alt="Logo" />
-          {!userMode ? (
-            <div className="bg-white p-8 md:p-10 rounded-[2.5rem] md:rounded-[3.5rem] shadow-2xl border border-[#B11E48]/5 text-center space-y-4 md:space-y-6">
-              <h3 className="text-2xl md:text-3xl font-serif font-black italic text-[#B11E48]">The Gully Path</h3>
-              <button onClick={() => setUserMode('order')} className="w-full py-5 md:py-6 bg-[#B11E48] text-white rounded-[1.5rem] md:rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-3">ORDER BOWL <ShoppingBag size={18}/></button>
-              <button onClick={() => setUserMode('review')} className="w-full py-5 md:py-6 bg-white border-2 border-[#B11E48] text-[#B11E48] rounded-[1.5rem] md:rounded-[2rem] font-black flex items-center justify-center gap-3">GIVE VERDICT <MessageSquare size={18}/></button>
+        <main className="max-w-md mx-auto pt-16 px-6">
+          <img src={BRAND_LOGO} className="w-28 mx-auto mb-10" alt="Logo" />
+          <div className="flex gap-2 mb-10 bg-white/50 p-1.5 rounded-3xl border border-[#B11E48]/10 shadow-sm">
+            {['Veg', 'Non-Veg', 'Both'].map(t => (
+              <button key={t} onClick={() => setSelectedTab(t)} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all ${selectedTab === t ? 'bg-[#B11E48] text-white shadow-md' : 'text-[#B11E48]/40'}`}>{t}</button>
+            ))}
+          </div>
+
+          <div className="space-y-12">
+            {(selectedTab === 'Veg' || selectedTab === 'Both') && (
+                <div className="animate-in fade-in duration-700">
+                    <div className="aspect-square rounded-[4rem] overflow-hidden border-[12px] border-white shadow-2xl mb-8"><img src={vegData.img || "https://images.unsplash.com"} className="w-full h-full object-cover" /></div>
+                    <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 leading-none">{vegData.name}</h2>
+                </div>
+            )}
+            {(selectedTab === 'Non-Veg' || selectedTab === 'Both') && (
+                <div className="animate-in fade-in duration-700">
+                    <div className="aspect-square rounded-[4rem] overflow-hidden border-[12px] border-white shadow-2xl mb-8"><img src={nvData.img || "https://images.unsplash.com"} className="w-full h-full object-cover" /></div>
+                    <h2 className="text-5xl font-serif font-black text-[#B11E48] text-center mb-3 leading-none">{nvData.name}</h2>
+                </div>
+            )}
+          </div>
+
+          <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-[#B11E48]/5 mt-12">
+            <h3 className="text-3xl font-serif font-black text-center italic text-[#B11E48] mb-8">Drop the Verdict</h3>
+            <div className="space-y-4">
+              <input id="u-phone" type="tel" placeholder="Mobile Number *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+              <input id="u-hustle" placeholder="Your Profession? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+              <input id="u-hood" placeholder="Your Location? *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10" />
+              {(selectedTab === 'Veg' || selectedTab === 'Both') && <textarea id="u-veg-text" placeholder="Veg Bowl Review... *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>}
+              {(selectedTab === 'Non-Veg' || selectedTab === 'Both') && <textarea id="u-nv-text" placeholder="Non-Veg Bowl Review... *" className="w-full p-5 bg-[#FFFBEB]/40 rounded-3xl h-32 outline-none border border-[#B11E48]/10"></textarea>}
+              <button onClick={submitVerdict} className="w-full bg-[#B11E48] text-white py-6 rounded-[2.5rem] font-black shadow-xl active:scale-95 transition-all">SUBMIT VERDICT</button>
             </div>
-          ) : (
-            <div className="space-y-6 md:space-y-8 animate-in slide-in-from-bottom-4">
-               {[ {id:'veg', data:vegData, tag:'100% VEG', dot:'bg-green-600', txt:'text-green-600'}, {id:'nonveg', data:nvData, tag:'NON-VEG', dot:'bg-[#B11E48]', txt:'text-[#B11E48]'} ].map(item => (
-                 <div key={item.id} className="bg-white rounded-[2rem] md:rounded-[3.5rem] shadow-xl border border-[#B11E48]/5 overflow-hidden">
-                    <div className="relative aspect-square bg-stone-100">
-                        <img src={item.data.img || "https://images.unsplash.com"} className="w-full h-full object-cover" />
-                        <div className="absolute top-4 left-4 md:top-6 md:left-6 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm flex items-center gap-2">
-                            <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${item.dot}`}></div>
-                            <span className={`text-[7px] md:text-[8px] font-black tracking-widest ${item.txt}`}>{item.tag}</span>
-                        </div>
-                    </div>
-                    <div className="p-6 md:p-8">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                            <div className="flex-1">
-                                <h3 className="text-3xl md:text-4xl font-serif font-black text-[#B11E48] leading-none">{item.data.name}</h3>
-                                <p className="text-[9px] md:text-[10px] font-bold text-stone-400 mt-1 italic uppercase tracking-tight line-clamp-1">"{item.data.tagline}"</p>
-                            </div>
-                            {userMode === 'order' && (
-                                <div className="flex items-center gap-3 bg-[#FFFBEB] p-1.5 rounded-xl border border-[#B11E48]/10">
-                                    <button onClick={() => setCart({...cart, [item.id]: Math.max(0, cart[item.id]-1)})} className="p-1.5 text-[#B11E48]"><Minus size={14}/></button>
-                                    <span className="font-black text-lg w-4 text-center">{cart[item.id]}</span>
-                                    <button onClick={() => setCart({...cart, [item.id]: cart[item.id]+1})} className="p-1.5 text-[#B11E48]"><Plus size={14}/></button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 md:gap-3 pt-6 border-t border-stone-50">
-                            <div className="bg-[#FFFBEB] p-3 rounded-2xl text-center">
-                                <Zap size={14} className="mx-auto mb-1 text-[#B11E48]" /><p className="text-[7px] font-black text-[#B11E48]/60 uppercase tracking-widest leading-none mb-1">Protein</p><p className="text-sm md:text-xl font-black">{item.data.p}g</p>
-                            </div>
-                            <div className="bg-[#FFFBEB] p-3 rounded-2xl text-center">
-                                <Wheat size={14} className="mx-auto mb-1 text-[#B11E48]" /><p className="text-[7px] font-black text-[#B11E48]/60 uppercase tracking-widest leading-none mb-1">Fiber</p><p className="text-sm md:text-xl font-black">{item.data.f}g</p>
-                            </div>
-                            <div className="bg-[#FFFBEB] p-3 rounded-2xl text-center">
-                                <Flame size={14} className="mx-auto mb-1 text-[#B11E48]" /><p className="text-[7px] font-black text-[#B11E48]/60 uppercase tracking-widest leading-none mb-1">Calories</p><p className="text-sm md:text-xl font-black">{item.data.c}</p>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
-               ))}
-               <div className="bg-white p-8 md:p-10 rounded-[2.5rem] md:rounded-[4rem] shadow-2xl border border-[#B11E48]/5 space-y-4 mb-8">
-                  <h3 className="text-2xl md:text-3xl font-serif font-black italic text-[#B11E48] text-center">{userMode === 'order' ? 'Checkout' : 'Verdict'}</h3>
-                  {userMode === 'order' ? (
-                    <>
-                        <p className="text-[9px] text-center font-black text-green-600 uppercase mb-4 tracking-tighter">BOWL IS FREE • DELIVERY ₹{paySettings.fee}</p>
-                        <div className="space-y-3">
-                            <input id="o-phone" type="tel" placeholder="Mobile Number *" className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 text-sm" />
-                            <textarea id="o-addr" placeholder="Flat No, Building, Location *" className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 h-20 md:h-24 text-sm"></textarea>
-                            <input id="o-maps" placeholder="Google Maps Link" className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 text-sm" />
-                        </div>
-                        <button onClick={handlePlaceOrder} className="w-full bg-[#B11E48] text-white py-5 rounded-[2rem] font-black shadow-xl uppercase mt-2">Pay & Confirm</button>
-                    </>
-                  ) : (
-                    <>
-                        <input id="u-phone" type="tel" placeholder="Mobile Number *" className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 text-sm" />
-                        <input id="u-hustle" placeholder="Your Profession? *" className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl outline-none border border-[#B11E48]/10 text-sm" />
-                        <textarea id="u-veg-text" placeholder="Veg Verdict..." className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl h-20 outline-none border border-[#B11E48]/10 text-sm"></textarea>
-                        <textarea id="u-nv-text" placeholder="NV Verdict..." className="w-full p-4 md:p-5 bg-[#FFFBEB]/40 rounded-2xl h-20 outline-none border border-[#B11E48]/10 text-sm"></textarea>
-                        <button onClick={async () => {
-                            const p = document.getElementById('u-phone').value;
-                            if(!p) return alert("Phone Required!");
-                            await addDoc(collection(db, "reviews"), { name: user.displayName, phone: p, hustle: document.getElementById('u-hustle').value, vegText: document.getElementById('u-veg-text').value, nvText: document.getElementById('u-nv-text').value, timestamp: Date.now(), trialDate: activeDate, date: new Date().toLocaleString() });
-                            alert("Gossip Received! 🥣"); setUserMode(null);
-                        }} className="w-full bg-[#B11E48] text-white py-5 rounded-[2rem] font-black shadow-xl uppercase mt-2">Submit Verdict</button>
-                    </>
-                  )}
-                  <button onClick={() => setUserMode(null)} className="w-full py-2 text-[10px] font-black text-stone-300 uppercase tracking-widest text-center">Back</button>
-               </div>
-            </div>
-          )}
+          </div>
         </main>
       ) : (
-        /* --- ADMIN DASHBOARD --- */
-        <main className="w-full max-w-7xl mx-auto pt-8 md:pt-16 px-4 md:px-8 flex flex-col">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-8 md:mb-12">
-                <div><h2 className="text-4xl md:text-5xl font-serif font-black italic text-[#B11E48]">Operational Control</h2>
-                    <div className="flex gap-2 md:gap-4 mt-4 bg-white p-1.5 rounded-2xl border border-[#B11E48]/5">
-                        <button onClick={() => setAdminTab('orders')} className={`px-4 md:px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'orders' ? 'bg-[#B11E48] text-white shadow-md' : 'text-[#B11E48]/40'}`}>Orders</button>
-                        <button onClick={() => setAdminTab('reviews')} className={`px-4 md:px-8 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${adminTab === 'reviews' ? 'bg-[#B11E48] text-white shadow-md' : 'text-[#B11E48]/40'}`}>Reviews</button>
-                    </div>
+        <main className="max-w-screen-2xl mx-auto pt-16 px-8 flex flex-col">
+            {/* ADMIN HEADER */}
+            <div className="flex flex-wrap justify-between items-start gap-8 mb-12">
+                <div>
+                    <h2 className="text-5xl font-serif font-black italic text-[#B11E48]">The Kitchen Desk</h2>
+                    <p className="text-[#B11E48]/50 text-xs font-bold uppercase tracking-[0.2em] mt-3 flex items-center gap-2"><ShieldCheck size={14}/> Logged in as: {user.email}</p>
                 </div>
-                <div className="flex flex-wrap gap-2 md:gap-4 items-center w-full md:w-auto">
-                    <div className="bg-white border border-[#B11E48]/10 px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm flex-1 md:flex-none">
-                        <Calendar size={14} className="text-[#B11E48]"/><input type="date" value={activeDate.split('/').reverse().join('-')} onChange={(e) => setActiveDate(new Date(e.target.value).toLocaleDateString('en-GB'))} className="text-[10px] font-black outline-none bg-transparent w-full" />
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="bg-white border border-[#B11E48]/10 p-3 rounded-xl text-[#B11E48] shadow-sm"><ArrowUpDown size={16}/></button>
-                        <button onClick={() => exportData(adminTab)} className="bg-[#B11E48] text-white p-3 rounded-xl shadow-lg"><Download size={16}/></button>
-                        <button onClick={() => signOut(auth)} className="bg-white border border-[#B11E48]/10 p-3 rounded-xl text-[#B11E48]"><LogOut size={16}/></button>
-                    </div>
+                <div className="flex gap-4">
+                    <button onClick={exportToExcel} className="bg-[#B11E48] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 shadow-lg hover:scale-105 transition-all"><Download size={16}/> Master Report</button>
+                    <button onClick={() => signOut(auth)} className="bg-white border-[#B11E48]/20 border p-4 rounded-2xl shadow-sm"><LogOut size={18} className="text-[#B11E48]"/></button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 md:gap-8">
-                <div className="xl:col-span-1 space-y-6 md:space-y-8">
-                    <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] shadow-sm border border-[#B11E48]/5">
-                        <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-4 italic">Daily Fulfillment ({activeDate})</h4>
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center"><p className="text-[10px] font-bold text-green-600 uppercase">Veg Total</p><p className="text-xl font-black">{totals.veg}</p></div>
-                            <div className="flex justify-between items-center"><p className="text-[10px] font-bold text-[#B11E48] uppercase">Meat Total</p><p className="text-xl font-black">{totals.nv}</p></div>
-                            <div className="pt-3 border-t flex justify-between items-center"><p className="text-xs font-black uppercase">Grand Total</p><p className="text-3xl font-black text-[#B11E48]">{totals.total}</p></div>
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+                {/* COLUMN 1: ANALYTICS & MENU */}
+                <div className="xl:col-span-1 space-y-8">
+                    <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
+                        <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-4">Live Stats</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-[#FFFBEB] p-4 rounded-2xl"><p className="text-[8px] font-bold text-[#B11E48]/60 uppercase">Total</p><p className="text-2xl font-black">{reviews.length}</p></div>
+                            <div className="bg-[#B11E48]/5 p-4 rounded-2xl"><p className="text-[8px] font-bold text-[#B11E48]/60 uppercase">Today</p><p className="text-2xl font-black">{reviews.filter(r => r.trialDate === activeTrialDate).length}</p></div>
                         </div>
                     </div>
-                    {['veg', 'nonveg'].map(type => {
-                        const data = type === 'veg' ? vegData : nvData;
-                        const set = type === 'veg' ? setVegData : setNvData;
-                        return (
-                        <div key={type} className="bg-white p-6 rounded-[2rem] shadow-sm border border-[#B11E48]/5">
-                            <p className="text-[9px] font-black uppercase text-stone-400 mb-4 italic">{type} Bowl Manager</p>
-                            <div className="space-y-2.5">
-                                <input value={data.img} onChange={e => set({...data, img: e.target.value})} className="w-full p-2.5 bg-[#FFFBEB]/50 rounded-xl text-[9px] font-mono outline-none" placeholder="Image URL" />
-                                <input value={data.name} onChange={e => set({...data, name: e.target.value})} className="w-full p-2.5 bg-[#FFFBEB]/50 rounded-xl font-bold text-[10px]" placeholder="Bowl Name" />
-                                <input value={data.tagline} onChange={e => set({...data, tagline: e.target.value})} className="w-full p-2.5 bg-[#FFFBEB]/50 rounded-xl italic text-[10px]" placeholder="Description..." />
-                                <div className="grid grid-cols-3 gap-1.5">{['p', 'f', 'c'].map(m => (<input key={m} value={data[m]} onChange={e => set({...data, [m]: e.target.value})} className="w-full p-1.5 bg-[#FFFBEB] rounded-lg text-center font-bold text-[10px]" placeholder={m.toUpperCase()} />))}</div>
-                                <button onClick={() => setDoc(doc(db, "menu", type), data)} className="w-full bg-[#B11E48] text-white py-2.5 rounded-xl text-[9px] font-black uppercase shadow-sm">Update Live</button>
+
+                    {['veg', 'nonveg'].map(type => (
+                        <div key={type} className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
+                            <p className="text-[10px] font-black uppercase tracking-widest mb-6 flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${type === 'veg' ? 'bg-green-500' : 'bg-red-500'}`}></span> {type} Editor
+                            </p>
+                            <div className="space-y-3">
+                                <input value={type === 'veg' ? vegData.img : nvData.img} onChange={e => type === 'veg' ? setVegData({...vegData, img: e.target.value}) : setNvData({...nvData, img: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl text-[10px] font-mono" placeholder="Image URL" />
+                                <input value={type === 'veg' ? vegData.name : nvData.name} onChange={e => type === 'veg' ? setVegData({...vegData, name: e.target.value}) : setNvData({...nvData, name: e.target.value})} className="w-full p-3 bg-[#FFFBEB]/50 rounded-xl font-bold text-sm" placeholder="Name" />
+                                <button onClick={() => { setDoc(doc(db, "menu", type), type === 'veg' ? vegData : nvData); logAction(`Updated ${type} menu`); }} className="w-full bg-[#B11E48] text-white py-3 rounded-xl text-[10px] font-black">SAVE LIVE</button>
                             </div>
                         </div>
-                    )})}
+                    ))}
                 </div>
 
-                <div className="xl:col-span-3">
-                    <div className="bg-white p-6 md:p-10 rounded-[2.5rem] md:rounded-[4rem] shadow-sm border border-[#B11E48]/5 min-h-[600px] flex flex-col">
-                        <h3 className="text-2xl md:text-3xl font-serif font-black italic text-[#B11E48] mb-6 md:mb-8">{adminTab === 'orders' ? 'Batch Orders' : 'Trial Gossip'}</h3>
-                        <div className="flex-1 overflow-y-auto space-y-4 pr-1 md:pr-4 custom-scrollbar">
-                            {adminTab === 'orders' ? (
-                                allOrders.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No orders logged.</p> : allOrders.map((o, i) => (
-                                    <div key={i} className="p-5 md:p-6 bg-[#FFFBEB]/50 rounded-[1.5rem] md:rounded-[2.5rem] border border-[#B11E48]/5 flex flex-col gap-4">
-                                        <div className="flex justify-between items-center">
-                                            <div><p className="font-black text-md md:text-lg text-[#B11E48] uppercase leading-none tracking-tighter">{o.name}</p><p className="text-[10px] font-bold text-stone-400 mt-2">{o.phone}</p></div>
-                                            <div className="flex gap-2">{o.vegQty > 0 && <span className="bg-green-50 text-green-700 px-3 py-1.5 rounded-full text-[9px] font-black shadow-sm">VEG: {o.vegQty}</span>}{o.nvQty > 0 && <span className="bg-red-50 text-red-700 px-3 py-1.5 rounded-full text-[9px] font-black shadow-sm">NV: {o.nvQty}</span>}</div>
+                {/* COLUMN 2 & 3: ADVANCED GOSSIP FEED */}
+                <div className="xl:col-span-2 space-y-8">
+                    <div className="bg-white p-8 rounded-[4rem] shadow-sm border border-[#B11E48]/5">
+                        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
+                            <h3 className="text-3xl font-serif font-black italic text-[#B11E48]">Trial Gossip</h3>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="p-3 bg-[#FFFBEB] rounded-xl text-[#B11E48] hover:bg-[#B11E48] hover:text-white transition-all">
+                                    <ArrowUpDown size={18} />
+                                </button>
+                                <input type="date" value={activeTrialDate.split('/').reverse().join('-')} onChange={(e) => setActiveTrialDate(new Date(e.target.value).toLocaleDateString('en-GB'))} className="bg-[#FFFBEB] border-none px-4 py-3 rounded-xl text-xs font-bold text-[#B11E48] outline-none" />
+                            </div>
+                        </div>
+                        <div className="space-y-6 max-h-[800px] overflow-y-auto pr-4 custom-scrollbar">
+                            {reviews.filter(r => r.trialDate === activeTrialDate).length === 0 ? (
+                                <div className="text-center py-20 opacity-20"><Utensils size={48} className="mx-auto mb-4" /><p className="font-bold">No verdicts for this trial date.</p></div>
+                            ) : reviews.filter(r => r.trialDate === activeTrialDate).map((r, i) => (
+                                <div key={i} className="p-8 bg-[#FFFBEB]/30 rounded-[3rem] border border-[#B11E48]/10 hover:shadow-md transition-all">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <p className="font-black text-lg text-[#B11E48]">{r.name}</p>
+                                            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{r.phone} • {r.hustle} • {r.hood}</p>
                                         </div>
-                                        <div className="pt-3 border-t border-stone-100 flex items-start gap-3">
-                                            <MapPin size={16} className="text-[#B11E48] shrink-0 mt-0.5" />
-                                            <div className="flex-1">
-                                                <p className="text-[10px] font-bold text-stone-600 leading-snug uppercase tracking-tight line-clamp-2">{o.fullAddress}</p>
-                                                {o.mapsLink && <a href={o.mapsLink} target="_blank" className="inline-flex items-center gap-2 mt-2 text-[9px] font-black text-white bg-[#B11E48] px-3 py-1.5 rounded-lg"><Navigation size={10}/> GOOGLE MAPS</a>}
-                                            </div>
-                                        </div>
+                                        <span className="text-[10px] font-black bg-[#B11E48] text-white px-4 py-2 rounded-full uppercase">{r.tried}</span>
                                     </div>
-                                ))
-                            ) : (
-                                reviews.length === 0 ? <p className="text-center py-20 italic opacity-20 text-stone-400">No verdicts found.</p> : reviews.map((r, i) => (
-                                    <div key={i} className="p-6 md:p-8 bg-[#FFFBEB]/30 rounded-[1.5rem] md:rounded-[3.5rem] border border-[#B11E48]/10">
-                                        <div className="flex justify-between items-start mb-4 md:mb-6">
-                                            <div>
-                                                <p className="font-black text-lg md:text-xl text-[#B11E48] uppercase tracking-tighter">{r.name}</p>
-                                                <p className="text-[9px] font-bold text-stone-400 tracking-widest">{r.phone} • {r.hustle || "Sampler"}</p>
-                                            </div>
-                                            <p className="text-[8px] font-black text-stone-300 uppercase tracking-widest">{r.trialDate || "Legacy"}</p>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                                            {(r.vegText || r.text) && <div className="p-4 bg-white rounded-2xl border border-green-50 text-[11px] italic text-stone-600 leading-relaxed shadow-sm">Veg: {r.vegText || r.text}</div>}
-                                            {r.nvText && <div className="p-4 bg-white rounded-2xl border border-red-50 text-[11px] italic text-stone-600 leading-relaxed shadow-sm">Meat: {r.nvText}</div>}
-                                        </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        {r.vegText && <div className="p-5 bg-white rounded-3xl border border-green-100"><p className="text-[8px] font-black text-green-600 uppercase mb-2">Veg Verdict</p><p className="text-sm italic text-stone-600 leading-relaxed">"{r.vegText}"</p></div>}
+                                        {r.nvText && <div className="p-5 bg-white rounded-3xl border border-red-100"><p className="text-[8px] font-black text-red-600 uppercase mb-2">Non-Veg Verdict</p><p className="text-sm italic text-stone-600 leading-relaxed">"{r.nvText}"</p></div>}
                                     </div>
-                                ))
-                            )}
+                                    <p className="text-[8px] text-stone-300 font-bold mt-4 text-right uppercase tracking-widest">{r.date}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* COLUMN 4: ACTIVITY LOG & ADMIN MGMT */}
+                <div className="xl:col-span-1 space-y-8">
+                    {/* ADMIN MANAGEMENT */}
+                    <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
+                        <h4 className="text-xl font-serif font-black italic text-[#B11E48] mb-6 flex items-center gap-2"><ShieldCheck size={20}/> Admin Access</h4>
+                        {user.email === SUPER_ADMIN ? (
+                            <div className="space-y-4">
+                                <div className="flex gap-2">
+                                    <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} placeholder="Email to add..." className="flex-1 bg-[#FFFBEB] p-3 rounded-xl text-xs outline-none" />
+                                    <button onClick={() => { handleAdminManagement(adminSearch, 'add'); setAdminSearch(""); }} className="bg-[#B11E48] text-white p-3 rounded-xl"><Users size={16}/></button>
+                                </div>
+                                <div className="space-y-2 pt-4">
+                                    {adminList.map(email => (
+                                        <div key={email} className="flex justify-between items-center bg-[#FFFBEB]/50 p-3 rounded-xl border border-[#B11E48]/5">
+                                            <span className="text-[10px] font-bold truncate max-w-[120px]">{email}</span>
+                                            {email !== SUPER_ADMIN && (
+                                                <button onClick={() => handleAdminManagement(email, 'remove')} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-[10px] italic text-stone-400">View only. Management reserved for Super Admin.</p>
+                        )}
+                    </div>
+
+                    {/* ACTIVITY LOG */}
+                    <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-[#B11E48]/5">
+                        <h4 className="text-xl font-serif font-black italic text-[#B11E48] mb-6 flex items-center gap-2"><History size={20}/> Audit Log</h4>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            {logs.map((log, i) => (
+                                <div key={i} className="text-[9px] border-b border-stone-100 pb-3 last:border-0">
+                                    <p className="font-bold text-[#B11E48]">{log.admin}</p>
+                                    <p className="text-stone-600 mb-1">{log.action}</p>
+                                    <p className="text-[8px] text-stone-300 uppercase font-black tracking-widest">{log.date}</p>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
